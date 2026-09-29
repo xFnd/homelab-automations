@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ─────────────────────────────────────────────\n// ⚙️  CONFIGURE AQUI\n// ─────────────────────────────────────────────\nconst PROXMOX_HOST = 'https://proxmox.local:8006'; // IP/host do seu Proxmox\nconst NODE_NAME    = 'pve';                       // nome do nó (padrão: pve)\n// ─────────────────────────────────────────────\n\nconst raw  = $input.first().json;\nconst body = raw.body || raw;\n\nconst action        = (body.action || 'status').toLowerCase().trim();\nconst vmid          = body.vmid != null ? String(body.vmid).trim() : null;\n\nconst actionMap     = { start: 'start', stop: 'stop', restart: 'reboot' };\nconst proxmoxAction = actionMap[action] || null;\n\nreturn [{ json: { host: PROXMOX_HOST, node: NODE_NAME, action, proxmoxAction, vmid } }];"
+        "jsCode": "// ─────────────────────────────────────────────\n// ⚙️  CONFIGURE AQUI\n// ─────────────────────────────────────────────\nconst PROXMOX_HOST = 'https://proxmox.local:8006'; // IP/host do seu Proxmox\nconst NODE_NAME    = 'pve';                       // nome do nó (padrão: pve)\n// ─────────────────────────────────────────────\n\nconst raw  = $input.first().json;\nconst body = raw.body || raw;\n\nconst action        = (body.action || 'status').toLowerCase().trim();\nconst vmid          = body.vmid != null ? String(body.vmid).trim() : null;\n\n// stop usa shutdown (desliga pelo sistema operacional); status/stop seria tirar da tomada\nconst actionMap     = { start: 'start', stop: 'shutdown', restart: 'reboot' };\nconst proxmoxAction = actionMap[action] || null;\n\nreturn [{ json: { host: PROXMOX_HOST, node: NODE_NAME, action, proxmoxAction, vmid } }];"
       },
       "id": "536631f9-d956-4064-8333-7d29fa6d18ec",
       "name": "Config",
@@ -417,7 +417,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw  = $input.first().json;\nconst list = raw?.data || raw?.body?.data || [];\nreturn [{ json: { vmList: Array.isArray(list) ? list : [] } }];"
+        "jsCode": "const raw  = $input.first().json;\nconst data = raw?.data || raw?.body?.data;\nreturn [{ json: { vmList: Array.isArray(data) ? data : [], vmListOk: Array.isArray(data) } }];"
       },
       "id": "a64f3627-1d78-4791-a498-9ccc5f564413",
       "name": "Wrap VM List",
@@ -430,7 +430,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw  = $input.first().json;\nconst list = raw?.data || raw?.body?.data || [];\nreturn [{ json: { lxcList: Array.isArray(list) ? list : [] } }];"
+        "jsCode": "const raw  = $input.first().json;\nconst data = raw?.data || raw?.body?.data;\nreturn [{ json: { lxcList: Array.isArray(data) ? data : [], lxcListOk: Array.isArray(data) } }];"
       },
       "id": "4eb371ab-f55c-4fb1-82cc-b13da346a1b8",
       "name": "Wrap LXC List",
@@ -458,7 +458,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nlet vmList = [], lxcList = [];\n\nfor (const item of items) {\n  const j = item.json;\n  if (j.vmList  !== undefined) vmList  = j.vmList;\n  if (j.lxcList !== undefined) lxcList = j.lxcList;\n}\n\nconst config        = $('Config').first().json;\nconst { vmid, action, proxmoxAction, host, node } = config;\n\nif (!vmid) {\n  throw new Error('vmid é obrigatório. Use: !proxmox start 103');\n}\n\nif (!proxmoxAction) {\n  throw new Error(`Ação inválida: \"${action}\". Use: start, stop ou restart`);\n}\n\nconst vmMatch  = vmList.find(v => String(v.vmid)  === String(vmid));\nconst lxcMatch = lxcList.find(c => String(c.vmid) === String(vmid));\n\nif (!vmMatch && !lxcMatch) {\n  throw new Error(`ID ${vmid} não encontrado. Verifique com !proxmox`);\n}\n\nconst type          = vmMatch ? 'qemu' : 'lxc';\nconst guest         = vmMatch || lxcMatch;\nconst guestName     = guest.name || `id-${vmid}`;\nconst currentStatus = guest.status;\n\nreturn [{ json: { type, vmid, name: guestName, currentStatus, action, proxmoxAction, host, node } }];"
+        "jsCode": "const items = $input.all();\nlet vmList = [], lxcList = [];\nlet vmListOk = false, lxcListOk = false;\n\nfor (const item of items) {\n  const j = item.json;\n  if (j.vmList  !== undefined) { vmList  = j.vmList;  vmListOk  = j.vmListOk; }\n  if (j.lxcList !== undefined) { lxcList = j.lxcList; lxcListOk = j.lxcListOk; }\n}\n\nconst config        = $('Config').first().json;\nconst { vmid, action, proxmoxAction, host, node } = config;\n\n// Erro vira resposta em vez de throw: com throw o workflow falha antes do\n// Respond, o n8n devolve um erro genérico e a mensagem nunca chega no Discord.\nconst falha = (msg) => [{ json: { found: false, report: `❌ ${msg}` } }];\n\nif (!vmid) {\n  return falha('vmid é obrigatório. Use: `!proxmox start 103`');\n}\n\nif (!proxmoxAction) {\n  return falha(`Ação inválida: \"${action}\". Use: start, stop ou restart`);\n}\n\nif (!vmListOk && !lxcListOk) {\n  return falha('Não consegui listar VMs e containers no Proxmox. Verifique o host e a credencial no n8n.');\n}\n\nconst vmMatch  = vmList.find(v => String(v.vmid)  === String(vmid));\nconst lxcMatch = lxcList.find(c => String(c.vmid) === String(vmid));\n\nif (!vmMatch && !lxcMatch) {\n  return falha(`ID \\`${vmid}\\` não encontrado. Veja os IDs com \\`!proxmox\\``);\n}\n\nconst type          = vmMatch ? 'qemu' : 'lxc';\nconst guest         = vmMatch || lxcMatch;\nconst guestName     = guest.name || `id-${vmid}`;\nconst currentStatus = guest.status;\n\nreturn [{ json: { found: true, type, vmid, name: guestName, currentStatus, action, proxmoxAction, host, node } }];"
       },
       "id": "0bda54fe-ec05-46f4-a56a-9b1bba90f058",
       "name": "Detect Type",
@@ -497,7 +497,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        1040,
+        1280,
         112
       ]
     },
@@ -520,7 +520,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        1280,
+        1520,
         0
       ],
       "credentials": {
@@ -549,7 +549,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        1280,
+        1520,
         208
       ],
       "credentials": {
@@ -561,14 +561,14 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst ctx = $('Detect Type').first().json;\n\nconst actionEmoji = { start: '▶️', stop: '⏹️', restart: '🔄' };\nconst emoji       = actionEmoji[ctx.action] || '⚙️';\nconst typeLabel   = ctx.type === 'qemu' ? '🖥️ VM' : '📦 LXC';\nconst actionPT    = { start: 'iniciado', stop: 'parado', restart: 'reiniciado' };\nconst pastTense   = actionPT[ctx.action] || ctx.action;\n\n// Proxmox retorna string UPID em caso de sucesso\nconst upid    = raw?.data || raw?.body?.data;\nconst success = upid && typeof upid === 'string' && upid.startsWith('UPID:');\n\nlet report;\nif (success) {\n  report = `${emoji} ${typeLabel} **${ctx.name}** (\\`${ctx.vmid}\\`) ${pastTense} com sucesso!\\n> ✅ Tarefa registrada no Proxmox`;\n} else {\n  const errMsg = raw?.message || raw?.body?.message || 'verifique o estado do container/VM';\n  report = `❌ Falha ao executar **${ctx.action}** em **${ctx.name}** (\\`${ctx.vmid}\\`)\\n> ${errMsg}`;\n}\n\nreturn [{ json: { report } }];"
+        "jsCode": "const raw = $input.first().json;\nconst ctx = $('Detect Type').first().json;\n\nconst actionEmoji = { start: '▶️', stop: '⏹️', restart: '🔄' };\nconst emoji       = actionEmoji[ctx.action] || '⚙️';\nconst typeLabel   = ctx.type === 'qemu' ? '🖥️ VM' : '📦 LXC';\nconst actionPT    = {\n  start:   'iniciado com sucesso!',\n  stop:    'desligando pelo sistema operacional…',\n  restart: 'reiniciado com sucesso!',\n};\nconst resultado   = actionPT[ctx.action] || `${ctx.action} executado`;\n\n// Proxmox retorna string UPID em caso de sucesso\nconst upid    = raw?.data || raw?.body?.data;\nconst success = upid && typeof upid === 'string' && upid.startsWith('UPID:');\n\nlet report;\nif (success) {\n  report = `${emoji} ${typeLabel} **${ctx.name}** (\\`${ctx.vmid}\\`) ${resultado}\\n> ✅ Tarefa registrada no Proxmox`;\n} else {\n  const errMsg = raw?.message || raw?.body?.message || 'verifique o estado do container/VM';\n  report = `❌ Falha ao executar **${ctx.action}** em **${ctx.name}** (\\`${ctx.vmid}\\`)\\n> ${errMsg}`;\n}\n\nreturn [{ json: { report } }];"
       },
       "id": "dab7990a-eadd-4932-b835-8b4508f2ebf6",
       "name": "Format Action Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1520,
+        1760,
         112
       ]
     },
@@ -585,7 +585,40 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1760,
+        2000,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-target-found",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5b0e1f7a-3c2d-4e8f-9a6b-1d2c3e4f5a6b",
+      "name": "IF Target Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1040,
         112
       ]
     }
@@ -881,7 +914,7 @@
       "main": [
         [
           {
-            "node": "IF Is QEMU",
+            "node": "IF Target Found",
             "type": "main",
             "index": 0
           }
@@ -930,6 +963,24 @@
     },
     "Format Action Response": {
       "main": [
+        [
+          {
+            "node": "Respond Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Target Found": {
+      "main": [
+        [
+          {
+            "node": "IF Is QEMU",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "Respond Action",
