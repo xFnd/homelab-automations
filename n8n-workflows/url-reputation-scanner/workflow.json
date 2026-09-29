@@ -1,0 +1,731 @@
+{
+  "name": "🔐 URL Reputation Scanner v2 (VT + URLScan.io)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "discord-command",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cf72c3a4-7d94-4b4d-914a-f28820fbe4cb",
+      "name": "Webhook - Submit URL for Analysis",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        -1616,
+        432
+      ],
+      "webhookId": "40ca0cb6-844d-4c02-b23d-8558f08ab508",
+      "typeVersion": 2.1
+    },
+    {
+      "parameters": {
+        "jsCode": "let rawUrl = $input.first().json.body?.url || $input.first().json.url || '';\nrawUrl = typeof rawUrl === 'string' ? rawUrl.trim() : '';\n\nif (!rawUrl) {\n  return [{ json: { original_url: rawUrl, normalized_url: '', is_valid: false } }];\n}\n\nlet normalizedUrl = rawUrl;\nif (!/^[a-zA-Z]+:\\/\\//.test(normalizedUrl)) {\n  normalizedUrl = 'http://' + normalizedUrl;\n}\n\nlet isValid = false;\ntry {\n  const parts = normalizedUrl.split('://');\n  if (parts.length === 2) {\n    const protocol = parts[0].toLowerCase();\n    const hostPart = parts[1].split('/')[0];\n    if ((protocol === 'http' || protocol === 'https') && hostPart.length > 0 && hostPart.includes('.')) {\n      isValid = true;\n    }\n  }\n} catch (err) {\n  isValid = false;\n}\n\nreturn [{ json: { original_url: rawUrl, normalized_url: normalizedUrl, is_valid: isValid } }];"
+      },
+      "id": "40098df7-2202-4db2-a934-5292c6548a71",
+      "name": "Normalize Input URL",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -1424,
+        432
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "96418dd7-c3d2-4384-b3b2-fd4645e0b977",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ $json.is_valid }}",
+              "rightValue": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7da7c684-d867-473d-b44c-831f220d44d6",
+      "name": "IF - URL is Valid?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -1184,
+        432
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"Invalid or malformed URL\",\n  \"message\": \"Please submit a valid URL\"\n}",
+        "options": {}
+      },
+      "id": "19f6ffe0-a248-495c-80f5-609c29a1ce86",
+      "name": "Respond - Invalid URL error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        -1168,
+        656
+      ],
+      "typeVersion": 1.5
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.virustotal.com/api/v3/urls",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $json.normalized_url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a33393b0-a7cf-41b9-b497-79f82bc4a0cc",
+      "name": "VirusTotal - Submit URL for Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -864,
+        416
+      ],
+      "typeVersion": 4.3,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "VirusTotal"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "amount": 20
+      },
+      "id": "3fa94814-cdca-4d56-aa45-1ca3de81d6ed",
+      "name": "Wait - VirusTotal Scan Processing",
+      "type": "n8n-nodes-base.wait",
+      "position": [
+        -544,
+        416
+      ],
+      "webhookId": "d0f7d9dc-de79-4530-a14d-1271206c4c39",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "url": "=https://www.virustotal.com/api/v3/analyses/{{ $json.data.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "id": "71715860-3dab-4ff9-8584-d052027f92e3",
+      "name": "VirusTotal - Get Scan Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -368,
+        416
+      ],
+      "typeVersion": 4.3,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "VirusTotal"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "8dcc6478-58cb-4fd9-93c9-a2bc02011889",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "leftValue": "={{ $json.data.attributes.status }}",
+              "rightValue": "completed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6a33600c-8b07-43b7-858c-35a821e8ed07",
+      "name": "IF - VirusTotal Analysis Completed?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -112,
+        448
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "amount": 15
+      },
+      "id": "f0c88d4c-7cd5-447c-8282-bbb614104b07",
+      "name": "Wait - Retry VT Analysis Poll",
+      "type": "n8n-nodes-base.wait",
+      "position": [
+        -544,
+        640
+      ],
+      "webhookId": "6589ec33-4f39-4e34-ba15-e870e8d198a3",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "jsCode": "const stats    = $json.data.attributes.stats;\nconst url_info = $json.meta.url_info;\nconst normalized_url = $('Normalize Input URL').first().json.normalized_url || url_info.url;\n\nreturn [{ json: {\n  vt_malicious:   stats.malicious   || 0,\n  vt_suspicious:  stats.suspicious  || 0,\n  vt_harmless:    stats.harmless    || 0,\n  vt_undetected:  stats.undetected  || 0,\n  vt_status:      $json.data.attributes.status,\n  url:            url_info.url,\n  normalized_url: normalized_url\n}}];"
+      },
+      "id": "109fbd84-d867-414a-ab69-953e8e0ead18",
+      "name": "Extract VirusTotal Verdict Stats",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        160,
+        432
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://urlscan.io/api/v1/scan/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.normalized_url, visibility: 'public' }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "80a62f4f-2552-4a58-9be8-bde74510c418",
+      "name": "URLScan.io - Submit URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        400,
+        432
+      ],
+      "typeVersion": 4.3,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "urlscan.io"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "amount": 25
+      },
+      "id": "95026b80-ea25-45a7-ad7d-f922e3d30d64",
+      "name": "Wait - URLScan Processing",
+      "type": "n8n-nodes-base.wait",
+      "position": [
+        640,
+        432
+      ],
+      "webhookId": "aa000001-0000-0000-aaaa-000000000002",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "url": "=https://urlscan.io/api/v1/result/{{ $json.uuid }}/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "d08d1d88-6a13-442e-83c6-3baec0e4774e",
+      "name": "URLScan.io - Get Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        880,
+        432
+      ],
+      "typeVersion": 4.3,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "urlscan.io"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const urlscanRaw = $input.first().json;\nconst vt = $('Extract VirusTotal Verdict Stats').first().json;\n\nlet urlscan_malicious  = false;\nlet urlscan_score      = 0;\nlet urlscan_screenshot = null;\nlet urlscan_available  = false;\n\nif (!urlscanRaw.error && urlscanRaw.verdicts) {\n  urlscan_malicious  = urlscanRaw.verdicts?.overall?.malicious || false;\n  urlscan_score      = urlscanRaw.verdicts?.overall?.score     || 0;\n  urlscan_screenshot = urlscanRaw.screenshot || null;\n  urlscan_available  = true;\n}\n\nreturn [{ json: {\n  ...vt,\n  urlscan_malicious,\n  urlscan_score,\n  urlscan_screenshot,\n  urlscan_available\n}}];"
+      },
+      "id": "15a1ef6e-0919-4eb3-a26a-6aac50deea0d",
+      "name": "Combine VT + URLScan Results",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1120,
+        432
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const malicious         = $json.vt_malicious      || 0;\nconst suspicious        = $json.vt_suspicious     || 0;\nconst harmless          = $json.vt_harmless       || 0;\nconst urlscan_malicious = $json.urlscan_malicious || false;\nconst urlscan_score     = $json.urlscan_score     || 0;\nconst urlscan_available = $json.urlscan_available || false;\n\nlet risk    = 'Low';\nlet verdict = 'SAFE';\n\nif (malicious >= 1 || urlscan_malicious) {\n  risk    = 'High';\n  verdict = 'PHISHING';\n} else if (suspicious >= 2 || urlscan_score >= 50) {\n  risk    = 'Medium';\n  verdict = 'SUSPICIOUS';\n} else if (suspicious >= 1) {\n  risk    = 'Low-Medium';\n  verdict = 'SUSPICIOUS';\n}\n\nlet displayUrl    = $json.normalized_url || $json.url || '';\nconst originalUrl = displayUrl;\n\nif (verdict !== 'SAFE') {\n  displayUrl = displayUrl\n    .replace(/^http:\\/\\//i,  'hxxp://')\n    .replace(/^https:\\/\\//i, 'hxxps://')\n    .replace(/\\./g, '[.]');\n}\n\nconst timestamp = new Date().toISOString();\n\nreturn [{ json: {\n  url:          displayUrl,\n  original_url: originalUrl,\n  verdict,\n  risk_level:   risk,\n  timestamp,\n  screenshot:   $json.urlscan_screenshot || null,\n  engines: {\n    virustotal: { malicious, suspicious, harmless },\n    urlscan:    { malicious: urlscan_malicious, score: urlscan_score, available: urlscan_available }\n  }\n}}];"
+      },
+      "id": "8d37dcff-1dd4-459b-9ce6-e3a2d6a4a351",
+      "name": "Build Phishing Verdict",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1360,
+        432
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "a1268f1d-71fd-44ea-ba46-8a4a3de8c323",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        1600,
+        432
+      ],
+      "typeVersion": 1.5
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"Threat intelligence service unavailable\",\n  \"message\": \"VirusTotal request failed. Please try again later.\"\n}",
+        "options": {}
+      },
+      "id": "a0903bee-7f6c-4ecc-b28b-2d7a1b5dfd23",
+      "name": "Respond - VT Service Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 1.5
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "a5b806df-b3ce-4743-b2cb-3f297924c14d",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              },
+              "leftValue": "={{$json.error}}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1ae29430-23cb-488e-9160-79640580aa5c",
+      "name": "IF - VT Analysis Error?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -224,
+        80
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "59a51a9b-ffbf-46cf-b7ba-b97ebbb0791e",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              },
+              "leftValue": "={{$json.error}}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ed3d580a-7e2e-4461-8d1b-eb15fd49e738",
+      "name": "IF - VT Submit Error?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -688,
+        64
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "jsCode": "// $runIndex = quantas vezes este nó já rodou nesta execução (0, 1, 2...)\n// Não dá pra guardar o contador no item: o HTTP Request seguinte substitui o JSON.\nreturn [{ json: { ...$json, retry_count: $runIndex + 1 } }];"
+      },
+      "id": "ef6169f9-9610-4ecf-8263-386c69f5cac7",
+      "name": "Increment Retry Counter",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -128,
+        768
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 3,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "a864ef76-3d9a-4909-b6d4-f3d7d5144b84",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              },
+              "leftValue": "={{ $json.retry_count }}",
+              "rightValue": 5
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4c8d98fa-fdc0-493b-9999-857ce6c46e23",
+      "name": "IF Max Retry Reached?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        -352,
+        1024
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'timeout', reason: 'VirusTotal analysis not ready after max retries', url: $('Normalize Input URL').first().json.normalized_url, retry_count: $json.retry_count }) }}",
+        "options": {}
+      },
+      "id": "6172aab2-aa05-4923-9c59-a2bae091041d",
+      "name": "Respond Timeout",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        -112,
+        1008
+      ],
+      "typeVersion": 1.5
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Submit URL for Analysis": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input URL": {
+      "main": [
+        [
+          {
+            "node": "IF - URL is Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - URL is Valid?": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal - Submit URL for Scan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Invalid URL error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal - Submit URL for Scan": {
+      "main": [
+        [
+          {
+            "node": "IF - VT Submit Error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - VT Submit Error?": {
+      "main": [
+        [
+          {
+            "node": "Respond - VT Service Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait - VirusTotal Scan Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - VirusTotal Scan Processing": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal - Get Scan Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal - Get Scan Analysis": {
+      "main": [
+        [
+          {
+            "node": "IF - VT Analysis Error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - VT Analysis Error?": {
+      "main": [
+        [
+          {
+            "node": "Respond - VT Service Error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF - VirusTotal Analysis Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - VirusTotal Analysis Completed?": {
+      "main": [
+        [
+          {
+            "node": "Extract VirusTotal Verdict Stats",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Increment Retry Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Retry Counter": {
+      "main": [
+        [
+          {
+            "node": "IF Max Retry Reached?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Max Retry Reached?": {
+      "main": [
+        [
+          {
+            "node": "Respond Timeout",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait - Retry VT Analysis Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Retry VT Analysis Poll": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal - Get Scan Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract VirusTotal Verdict Stats": {
+      "main": [
+        [
+          {
+            "node": "URLScan.io - Submit URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "URLScan.io - Submit URL": {
+      "main": [
+        [
+          {
+            "node": "Wait - URLScan Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - URLScan Processing": {
+      "main": [
+        [
+          {
+            "node": "URLScan.io - Get Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "URLScan.io - Get Result": {
+      "main": [
+        [
+          {
+            "node": "Combine VT + URLScan Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine VT + URLScan Results": {
+      "main": [
+        [
+          {
+            "node": "Build Phishing Verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Phishing Verdict": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

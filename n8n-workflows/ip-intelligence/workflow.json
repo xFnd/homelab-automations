@@ -1,0 +1,476 @@
+{
+  "name": "📍IP Intelligence Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ip-intel",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c24e760a-1c5a-47c3-903f-d665e1388821",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -912,
+        208
+      ],
+      "webhookId": "ip-intel-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\n\n// n8n v2 webhook aninha o body em .body, v1 coloca direto\nconst ip = (raw.body && raw.body.ip) ? raw.body.ip : raw.ip;\n\nif (!ip || typeof ip !== 'string') {\n  throw new Error('IP address is required. Received: ' + JSON.stringify(raw));\n}\n\nconst ipTrim = ip.trim();\nconst ipRegex = /^(\\d{1,3}\\.){3}\\d{1,3}$/;\n\nif (!ipRegex.test(ipTrim)) {\n  throw new Error('Invalid IP address format: ' + ipTrim);\n}\n\nconst reversed = ipTrim.split('.').reverse().join('.');\nreturn [{ json: { ip: ipTrim, reversed_ip: reversed + '.in-addr.arpa' } }];"
+      },
+      "id": "c2b3c4cb-e982-4dea-b4b3-7f4f79a6951d",
+      "name": "Prepare IP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.virustotal.com/api/v3/ip_addresses/{{ $input.first().json.ip }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {}
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "3bec9790-c64c-4593-b657-08f01ee32c82",
+      "name": "VirusTotal Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -416,
+        -80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "VirusTotal"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "=https://api.abuseipdb.com/api/v2/check?ipAddress={{ $input.first().json.ip }}&maxAgeInDays=90&verbose",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "d754fecb-ecdb-4374-a0e5-d9a4aa8846df",
+      "name": "AbuseIPDB Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -416,
+        128
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "AbuseIPDB"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "=https://ipinfo.io/{{ $input.first().json.ip }}/json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "a5edf9e8-8fc8-462c-871d-e7882afc0a54",
+      "name": "IPInfo Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -416,
+        320
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "IPInfo"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://dns.google/resolve?name={{ $input.first().json.reversed_ip }}&type=PTR",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "981b0132-7425-41be-ae80-2fe18f0d5b2b",
+      "name": "DNS Reverse Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -416,
+        528
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first();\nif (input.json.error) {\n  return [{ json: { vt: null, vt_error: input.json.error } }];\n}\nreturn [{ json: { vt: input.json } }];"
+      },
+      "id": "572620d7-9ade-490c-a345-91fc547973e5",
+      "name": "Wrap VT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first();\nif (input.json.error) {\n  return [{ json: { abuse: null, abuse_error: input.json.error } }];\n}\nreturn [{ json: { abuse: input.json } }];"
+      },
+      "id": "02cc7464-bf4d-4fd2-a99a-a4b0e3c5925f",
+      "name": "Wrap Abuse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first();\nif (input.json.error) {\n  return [{ json: { ipinfo: null, ipinfo_error: input.json.error } }];\n}\nreturn [{ json: { ipinfo: input.json } }];"
+      },
+      "id": "d246f0ee-5844-4d40-b53a-f3d5f6ac8f9b",
+      "name": "Wrap IPInfo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first();\nif (input.json.error) {\n  return [{ json: { dns: null, dns_error: input.json.error } }];\n}\nreturn [{ json: { dns: input.json } }];"
+      },
+      "id": "e7651b97-8cae-401a-886f-9889527171f1",
+      "name": "Wrap DNS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "b85b41e1-5df4-4c12-bb0f-b21050227fdf",
+      "name": "Merge VT + Abuse",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        64,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "ba78d3f4-489e-4831-90ff-d6c3efccbe51",
+      "name": "Merge + IPInfo",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        304,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "1593a57f-9d24-45cc-8d5d-e09a89eff9eb",
+      "name": "Merge + DNS",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        544,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\n\n// ─── Original IP (fallback chain) ───────────────────────────\nconst ip = d.ipinfo?.ip || $('Prepare IP').first().json.ip || 'Unknown';\n\n// ─── IPInfo ─────────────────────────────────────────────────\nconst country  = d.ipinfo?.country  || 'Unknown';\nconst region   = d.ipinfo?.region   || 'Unknown';\nconst city     = d.ipinfo?.city     || 'Unknown';\nconst postal   = d.ipinfo?.postal   || 'Unknown';\nconst timezone = d.ipinfo?.timezone || 'Unknown';\nconst hostname = d.ipinfo?.hostname || null;\nconst orgRaw   = d.ipinfo?.org      || '';\nconst loc      = d.ipinfo?.loc      ? d.ipinfo.loc.split(',') : [null, null];\nconst lat      = loc[0] ? parseFloat(loc[0]) : null;\nconst lon      = loc[1] ? parseFloat(loc[1]) : null;\n\nconst asnMatch = orgRaw.match(/^(AS\\d+)\\s+(.+)/);\nconst asn      = asnMatch ? asnMatch[1] : 'Unknown';\nconst orgName  = asnMatch ? asnMatch[2] : (orgRaw || 'Unknown');\n\n// ─── VirusTotal ──────────────────────────────────────────────\nlet vtMalicious    = 0;\nlet vtSuspicious   = 0;\nlet vtHarmless     = 0;\nlet vtUndetected   = 0;\nlet vtCommunity    = null;\nlet vtReputation   = null;\nlet vtCountry      = null;\nlet vtASN          = null;\nlet vtASOwner      = null;\nlet vtLastAnalysis = null;\n\nif (d.vt?.data?.attributes) {\n  const attrs = d.vt.data.attributes;\n  const stats = attrs.last_analysis_stats || {};\n  vtMalicious    = stats.malicious    || 0;\n  vtSuspicious   = stats.suspicious   || 0;\n  vtHarmless     = stats.harmless     || 0;\n  vtUndetected   = stats.undetected   || 0;\n  vtReputation   = attrs.reputation   ?? null;\n  vtCommunity    = attrs.total_votes  ? attrs.total_votes.malicious + '/' + (attrs.total_votes.malicious + attrs.total_votes.harmless) + ' community votes malicious' : null;\n  vtCountry      = attrs.country      || null;\n  vtASN          = attrs.asn          || null;\n  vtASOwner      = attrs.as_owner     || null;\n  vtLastAnalysis = attrs.last_analysis_date ? new Date(attrs.last_analysis_date * 1000).toISOString() : null;\n}\n\n// ─── AbuseIPDB ───────────────────────────────────────────────\nlet abuseScore   = 0;\nlet abuseReports = 0;\nlet abuseUsageType = null;\nlet abuseDomain    = null;\nlet abuseISP       = null;\nlet abuseCountry   = null;\nlet abuseWhitelisted = false;\nlet abuseLastReport = null;\n\nif (d.abuse?.data) {\n  const a = d.abuse.data;\n  abuseScore       = a.abuseConfidenceScore ?? 0;\n  abuseReports     = a.totalReports         ?? 0;\n  abuseUsageType   = a.usageType            || null;\n  abuseDomain      = a.domain               || null;\n  abuseISP         = a.isp                  || null;\n  abuseCountry     = a.countryCode          || null;\n  abuseWhitelisted = a.isWhitelisted         ?? false;\n  abuseLastReport  = a.lastReportedAt       || null;\n}\n\n// ─── Reverse DNS ─────────────────────────────────────────────\nlet reverseDns = hostname || null;\nif (!reverseDns && d.dns?.Answer && d.dns.Answer.length > 0) {\n  reverseDns = d.dns.Answer[0].data.replace(/\\.$/, '');\n}\n\n// ─── Risk score (simple heuristic) ──────────────────────────\nlet riskScore = 0;\nif (vtMalicious > 0)  riskScore += vtMalicious * 20;\nif (vtSuspicious > 0) riskScore += vtSuspicious * 10;\nif (abuseScore  > 0)  riskScore += abuseScore;\nriskScore = Math.min(riskScore, 100);\n\nlet riskLevel = 'Low';\nif (riskScore >= 70) riskLevel = 'High';\nelse if (riskScore >= 30) riskLevel = 'Medium';\n\n// ─── Final payload ───────────────────────────────────────────\nreturn [{ json: {\n  ip,\n  country,\n  region,\n  city,\n  postal,\n  timezone,\n  asn,\n  org: orgName,\n  reverse_dns: reverseDns || 'N/A',\n  location: { lat, lon },\n  risk: {\n    score: riskScore,\n    level: riskLevel\n  },\n  reputation: {\n    virustotal: {\n      malicious:     vtMalicious,\n      suspicious:    vtSuspicious,\n      harmless:      vtHarmless,\n      undetected:    vtUndetected,\n      reputation:    vtReputation,\n      community:     vtCommunity,\n      last_analysis: vtLastAnalysis,\n      country:       vtCountry,\n      asn:           vtASN,\n      as_owner:      vtASOwner\n    },\n    abuseipdb: {\n      abuseConfidenceScore: abuseScore,\n      totalReports:         abuseReports,\n      usageType:            abuseUsageType,\n      domain:               abuseDomain,\n      isp:                  abuseISP,\n      countryCode:          abuseCountry,\n      isWhitelisted:        abuseWhitelisted,\n      lastReportedAt:       abuseLastReport\n    }\n  },\n  network: {\n    isp:      abuseISP || orgName,\n    domain:   abuseDomain || hostname || 'N/A',\n    asn,\n    org:      orgName\n  },\n  sources: {\n    virustotal: !d.vt_error,\n    abuseipdb:  !d.abuse_error,\n    ipinfo:     !d.ipinfo_error,\n    dns:        !d.dns_error\n  }\n}}];"
+      },
+      "id": "a5368dee-e06c-4387-bcbf-42eba67c88b0",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "a2d760a7-63b3-40be-b2b3-f5e0b02dad8f",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1024,
+        240
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare IP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare IP": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AbuseIPDB Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IPInfo Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "DNS Reverse Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VirusTotal Request": {
+      "main": [
+        [
+          {
+            "node": "Wrap VT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AbuseIPDB Request": {
+      "main": [
+        [
+          {
+            "node": "Wrap Abuse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IPInfo Request": {
+      "main": [
+        [
+          {
+            "node": "Wrap IPInfo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DNS Reverse Request": {
+      "main": [
+        [
+          {
+            "node": "Wrap DNS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap VT": {
+      "main": [
+        [
+          {
+            "node": "Merge VT + Abuse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap Abuse": {
+      "main": [
+        [
+          {
+            "node": "Merge VT + Abuse",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge VT + Abuse": {
+      "main": [
+        [
+          {
+            "node": "Merge + IPInfo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap IPInfo": {
+      "main": [
+        [
+          {
+            "node": "Merge + IPInfo",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge + IPInfo": {
+      "main": [
+        [
+          {
+            "node": "Merge + DNS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap DNS": {
+      "main": [
+        [
+          {
+            "node": "Merge + DNS",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge + DNS": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

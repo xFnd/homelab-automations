@@ -1,0 +1,19 @@
+# Dependências (recriadas com `npm install`)
+node_modules/
+
+# Segredos — só o .env.example entra no repositório
+.env
+*.env
+.env.*
+!.env.example
+
+# Dados locais, backups e logs
+*-backups/
+*-data/
+*.log
+npm-debug.log*
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+.vscode/
