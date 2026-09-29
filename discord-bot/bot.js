@@ -6,10 +6,10 @@ const crypto = require("crypto");
 const { MEDIA_COMMANDS, handleMediaCommand } = require("./media");
 
 /* ─── Channel IDs (.env) ────────────────────────────────────────── */
-const SCAN_CHANNEL     = process.env.SCAN_CHANNEL_ID;
-const IP_CHANNEL       = process.env.IP_CHANNEL_ID;
-const PROXMOX_CHANNEL  = process.env.PROXMOX_CHANNEL_ID;
-const ALERT_CHANNEL    = process.env.ALERT_CHANNEL_ID || PROXMOX_CHANNEL; // alertas do homelab
+const SCAN_CHANNEL     = process.env.SCAN_CHANNEL;
+const IP_CHANNEL       = process.env.IP_CHANNEL;
+const PROXMOX_CHANNEL  = process.env.PROXMOX_CHANNEL;
+const ALERT_CHANNEL    = process.env.ALERT_CHANNEL || PROXMOX_CHANNEL; // alertas do homelab
 
 /* ─── Config (.env) ─────────────────────────────────────────────── */
 const TOKEN      = process.env.DISCORD_TOKEN;

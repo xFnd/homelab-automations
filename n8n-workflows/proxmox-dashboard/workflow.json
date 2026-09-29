@@ -1,0 +1,949 @@
+{
+  "name": "📊 Proxmox Status Dashboard v2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "proxmox-status",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "28ae1a86-f709-4c42-8da4-efda5042a268",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -784,
+        1120
+      ],
+      "webhookId": "proxmox-status-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─────────────────────────────────────────────\n// ⚙️  CONFIGURE AQUI\n// ─────────────────────────────────────────────\nconst PROXMOX_HOST = 'https://proxmox.local:8006'; // IP/host do seu Proxmox\nconst NODE_NAME    = 'pve';                       // nome do nó (padrão: pve)\n// ─────────────────────────────────────────────\n\nconst raw  = $input.first().json;\nconst body = raw.body || raw;\n\nconst action        = (body.action || 'status').toLowerCase().trim();\nconst vmid          = body.vmid != null ? String(body.vmid).trim() : null;\n\nconst actionMap     = { start: 'start', stop: 'stop', restart: 'reboot' };\nconst proxmoxAction = actionMap[action] || null;\n\nreturn [{ json: { host: PROXMOX_HOST, node: NODE_NAME, action, proxmoxAction, vmid } }];"
+      },
+      "id": "536631f9-d956-4064-8333-7d29fa6d18ec",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-is-status",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "status",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f772d087-f27d-46ba-aaad-1d5fffa5822c",
+      "name": "IF Is Status",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -288,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').first().json.host }}/api2/json/nodes/{{ $('Config').first().json.node }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "4c601435-d06a-401f-acbb-9e49740d59a1",
+      "name": "Get Node Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        720
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Proxmox"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').first().json.host }}/api2/json/nodes/{{ $('Config').first().json.node }}/rrddata?timeframe=hour&cf=AVERAGE",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "cf817e13-e2f6-48ff-adb6-9bf99944bf22",
+      "name": "Get RRD Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        928
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Proxmox"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').first().json.host }}/api2/json/nodes/{{ $('Config').first().json.node }}/qemu",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "d4286898-17bf-4db6-bbbb-6bd7928e5163",
+      "name": "Get VMs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        1120
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Proxmox"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').first().json.host }}/api2/json/nodes/{{ $('Config').first().json.node }}/lxc",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "d92d71d2-5653-4a0c-bea6-330be8b8520f",
+      "name": "Get LXCs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        1328
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Proxmox"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').first().json.host }}/api2/json/nodes/{{ $('Config').first().json.node }}/storage",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "ae48d708-7ae1-4690-b84d-602f2d4baf98",
+      "name": "Get Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        1520
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Proxmox"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst d = raw?.data || raw?.body?.data || null;\n\nif (!d || raw.error) {\n  return [{ json: { nodeStatus: null, nodeStatusOk: false } }];\n}\n\nconst cpuPct  = Math.round((d.cpu || 0) * 100);\nconst memUsed = Math.round((d.memory?.used  || 0) / 1024 / 1024 / 1024 * 100) / 100;\nconst memTotal= Math.round((d.memory?.total || 0) / 1024 / 1024 / 1024 * 100) / 100;\nconst memPct  = memTotal > 0 ? Math.round(memUsed / memTotal * 100) : 0;\n\nconst uptimeSec = d.uptime || 0;\nconst days  = Math.floor(uptimeSec / 86400);\nconst hours = Math.floor((uptimeSec % 86400) / 3600);\nconst mins  = Math.floor((uptimeSec % 3600) / 60);\nconst uptimeStr = days > 0 ? `${days}d ${hours}h ${mins}m` : `${hours}h ${mins}m`;\n\nconst load = (d.loadavg || []).map(v => parseFloat(v).toFixed(2)).join(' / ');\n\nreturn [{ json: {\n  nodeStatus: { cpuPct, memUsed, memTotal, memPct, uptime: uptimeStr, load },\n  nodeStatusOk: true\n}}];"
+      },
+      "id": "a47bd7fd-2b67-4a8b-be37-94d45c8366b9",
+      "name": "Wrap Node Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst list = raw?.data || raw?.body?.data || [];\n\nif (!Array.isArray(list) || list.length === 0) {\n  return [{ json: { rrdCpuPct: null, rrdOk: false } }];\n}\n\nconst validPoints = list\n  .filter(p => p.cpu != null && !isNaN(p.cpu))\n  .slice(-5);\n\nif (validPoints.length === 0) {\n  return [{ json: { rrdCpuPct: null, rrdOk: false } }];\n}\n\nconst avgCpu    = validPoints.reduce((sum, p) => sum + p.cpu, 0) / validPoints.length;\nconst rrdCpuPct = Math.round(avgCpu * 100);\n\nreturn [{ json: { rrdCpuPct, rrdOk: true, rrdSamples: validPoints.length } }];"
+      },
+      "id": "a17ffef2-7897-4b54-bc84-f0ed679d363c",
+      "name": "Wrap RRD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst list = raw?.data || raw?.body?.data || [];\n\nif (!Array.isArray(list)) {\n  return [{ json: { vms: [], vmsOk: false } }];\n}\n\nconst statusEmoji = (s) => s === 'running' ? '🟢' : s === 'stopped' ? '🔴' : '🟡';\n\nconst vms = list\n  .sort((a, b) => a.vmid - b.vmid)\n  .map(vm => ({\n    id:       vm.vmid,\n    name:     vm.name || `vm-${vm.vmid}`,\n    status:   vm.status,\n    emoji:    statusEmoji(vm.status),\n    cpus:     vm.cpus || 0,\n    memMB:    Math.round((vm.mem    || 0) / 1024 / 1024),\n    maxMemMB: Math.round((vm.maxmem || 0) / 1024 / 1024),\n    uptime:   vm.uptime || 0\n  }));\n\nreturn [{ json: { vms, vmsOk: true } }];"
+      },
+      "id": "82a75317-f5b8-42fa-9577-5714309eed8a",
+      "name": "Wrap VMs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst list = raw?.data || raw?.body?.data || [];\n\nif (!Array.isArray(list)) {\n  return [{ json: { lxcs: [], lxcsOk: false } }];\n}\n\nconst statusEmoji = (s) => s === 'running' ? '🟢' : s === 'stopped' ? '🔴' : '🟡';\n\nconst lxcs = list\n  .sort((a, b) => a.vmid - b.vmid)\n  .map(ct => ({\n    id:       ct.vmid,\n    name:     ct.name || `ct-${ct.vmid}`,\n    status:   ct.status,\n    emoji:    statusEmoji(ct.status),\n    cpus:     ct.cpus || 0,\n    memMB:    Math.round((ct.mem    || 0) / 1024 / 1024),\n    maxMemMB: Math.round((ct.maxmem || 0) / 1024 / 1024),\n    uptime:   ct.uptime || 0\n  }));\n\nreturn [{ json: { lxcs, lxcsOk: true } }];"
+      },
+      "id": "805b85a2-99d6-4805-b4f6-2ec9d2ac4823",
+      "name": "Wrap LXCs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        1328
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst list = raw?.data || raw?.body?.data || [];\n\nif (!Array.isArray(list)) {\n  return [{ json: { storages: [], storagesOk: false } }];\n}\n\nconst storages = list\n  .filter(s => s.active)\n  .map(s => {\n    const usedGB  = Math.round((s.used  || 0) / 1024 / 1024 / 1024 * 100) / 100;\n    const totalGB = Math.round((s.total || 0) / 1024 / 1024 / 1024 * 100) / 100;\n    const pct     = totalGB > 0 ? Math.round(usedGB / totalGB * 100) : 0;\n    const bar     = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));\n    return { name: s.storage, type: s.type, usedGB, totalGB, pct, bar };\n  });\n\nreturn [{ json: { storages, storagesOk: true } }];"
+      },
+      "id": "9afd78b0-bb06-41cc-91dc-1ec407449184",
+      "name": "Wrap Storage",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "41194419-1d3f-44de-8744-0b6de60f900d",
+      "name": "Merge Status + RRD",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        560,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "6534365b-640c-43ae-aeb0-77fbf46d4a7e",
+      "name": "Merge + VMs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        800,
+        928
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "f7eab6aa-33fa-4125-addc-302ab39bc958",
+      "name": "Merge + LXCs",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1040,
+        1024
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "1c71a062-faf8-4f9c-bc26-ae83c72954c7",
+      "name": "Merge + Storage",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1280,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nlet nodeStatus = null, nodeStatusOk = false;\nlet rrdCpuPct  = null, rrdOk = false, rrdSamples = 0;\nlet vms = [],          vmsOk = false;\nlet lxcs = [],         lxcsOk = false;\nlet storages = [],     storagesOk = false;\n\nfor (const item of items) {\n  const j = item.json;\n  if (j.nodeStatus !== undefined) { nodeStatus = j.nodeStatus; nodeStatusOk = j.nodeStatusOk; }\n  if (j.rrdCpuPct  !== undefined) { rrdCpuPct = j.rrdCpuPct; rrdOk = j.rrdOk; rrdSamples = j.rrdSamples || 0; }\n  if (j.vms        !== undefined) { vms = j.vms; vmsOk = j.vmsOk; }\n  if (j.lxcs       !== undefined) { lxcs = j.lxcs; lxcsOk = j.lxcsOk; }\n  if (j.storages   !== undefined) { storages = j.storages; storagesOk = j.storagesOk; }\n}\n\nconst ts = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });\n\n// ── HOST STATUS ──────────────────────────────\nlet hostBlock = '';\nif (nodeStatus && nodeStatusOk) {\n  const cpuPct   = (rrdOk && rrdCpuPct !== null) ? rrdCpuPct : nodeStatus.cpuPct;\n  const cpuLabel = (rrdOk && rrdCpuPct !== null)\n    ? `**${cpuPct}%** _(${rrdSamples}min)_`\n    : `**${cpuPct}%**`;\n  const cpuBar   = '█'.repeat(Math.round(cpuPct / 10)) + '░'.repeat(10 - Math.round(cpuPct / 10));\n  const memBar   = '█'.repeat(Math.round(nodeStatus.memPct / 10)) + '░'.repeat(10 - Math.round(nodeStatus.memPct / 10));\n  const cpuEmoji = cpuPct > 85 ? '🔴' : cpuPct > 60 ? '🟠' : '🟢';\n  const memEmoji = nodeStatus.memPct > 85 ? '🔴' : nodeStatus.memPct > 60 ? '🟠' : '🟢';\n  hostBlock = `🖥️ **Host Status**\\n> ${cpuEmoji} CPU: \\`${cpuBar}\\` ${cpuLabel}\\n> ${memEmoji} RAM: \\`${memBar}\\` **${nodeStatus.memPct}%** (${nodeStatus.memUsed}/${nodeStatus.memTotal} GB)\\n> ⏱️ Uptime: **${nodeStatus.uptime}** | Load: \\`${nodeStatus.load}\\``;\n} else {\n  hostBlock = '🖥️ **Host Status** — ❌ Dados indisponíveis';\n}\n\n// ── VMs ──────────────────────────────────────\nlet vmsBlock = '';\nif (vmsOk && vms.length > 0) {\n  const running = vms.filter(v => v.status === 'running').length;\n  const vmLines = vms.map(v => {\n    const mem = v.status === 'running' ? ` | RAM: ${v.memMB}/${v.maxMemMB} MB` : '';\n    return `> ${v.emoji} \\`${v.id}\\` **${v.name}** — ${v.status}${mem}`;\n  }).join('\\n');\n  vmsBlock = `🖥️ **VMs** (${running}/${vms.length} running)\\n${vmLines}`;\n} else if (vmsOk && vms.length === 0) {\n  vmsBlock = '🖥️ **VMs** — Nenhuma VM encontrada';\n} else {\n  vmsBlock = '🖥️ **VMs** — ❌ Dados indisponíveis';\n}\n\n// ── LXCs ─────────────────────────────────────\nlet lxcsBlock = '';\nif (lxcsOk && lxcs.length > 0) {\n  const running = lxcs.filter(c => c.status === 'running').length;\n  const ctLines = lxcs.map(c => {\n    const mem = c.status === 'running' ? ` | RAM: ${c.memMB}/${c.maxMemMB} MB` : '';\n    return `> ${c.emoji} \\`${c.id}\\` **${c.name}** — ${c.status}${mem}`;\n  }).join('\\n');\n  lxcsBlock = `📦 **LXC Containers** (${running}/${lxcs.length} running)\\n${ctLines}`;\n} else if (lxcsOk && lxcs.length === 0) {\n  lxcsBlock = '📦 **LXC Containers** — Nenhum container encontrado';\n} else {\n  lxcsBlock = '📦 **LXC Containers** — ❌ Dados indisponíveis';\n}\n\n// ── Storage ───────────────────────────────────\nlet storageBlock = '';\nif (storagesOk && storages.length > 0) {\n  const stLines = storages.map(s => {\n    const emoji = s.pct > 85 ? '🔴' : s.pct > 60 ? '🟠' : '🟢';\n    return `> ${emoji} **${s.name}** (${s.type}): \\`${s.bar}\\` ${s.pct}% — ${s.usedGB}/${s.totalGB} GB`;\n  }).join('\\n');\n  storageBlock = `💾 **Storage**\\n${stLines}`;\n} else {\n  storageBlock = '💾 **Storage** — ❌ Dados indisponíveis';\n}\n\nconst report = [\n  `🗓️ **Proxmox Dashboard** — \\`${ts}\\``,\n  '', hostBlock,\n  '', vmsBlock,\n  '', lxcsBlock,\n  '', storageBlock\n].join('\\n').trim();\n\nreturn [{ json: { report } }];"
+      },
+      "id": "2f052384-b2a8-4474-87e1-ebece78c9e5d",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ report: $json.report }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "fbebe5b0-0c4b-4f32-936d-9ba7fab6fe0f",
+      "name": "Respond Status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').first().json.host }}/api2/json/nodes/{{ $('Config').first().json.node }}/qemu",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "97b843bb-48cf-4d24-880a-eaa450d918e1",
+      "name": "Get VMs (Action)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Proxmox"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').first().json.host }}/api2/json/nodes/{{ $('Config').first().json.node }}/lxc",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "0ac0881a-f4e1-4643-a078-38fa47e744f9",
+      "name": "Get LXCs (Action)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        208
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Proxmox"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw  = $input.first().json;\nconst list = raw?.data || raw?.body?.data || [];\nreturn [{ json: { vmList: Array.isArray(list) ? list : [] } }];"
+      },
+      "id": "a64f3627-1d78-4791-a498-9ccc5f564413",
+      "name": "Wrap VM List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw  = $input.first().json;\nconst list = raw?.data || raw?.body?.data || [];\nreturn [{ json: { lxcList: Array.isArray(list) ? list : [] } }];"
+      },
+      "id": "4eb371ab-f55c-4fb1-82cc-b13da346a1b8",
+      "name": "Wrap LXC List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "6f4e484c-f103-410f-bca8-38975f3fa8a3",
+      "name": "Merge VM+LXC Lists",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        560,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nlet vmList = [], lxcList = [];\n\nfor (const item of items) {\n  const j = item.json;\n  if (j.vmList  !== undefined) vmList  = j.vmList;\n  if (j.lxcList !== undefined) lxcList = j.lxcList;\n}\n\nconst config        = $('Config').first().json;\nconst { vmid, action, proxmoxAction, host, node } = config;\n\nif (!vmid) {\n  throw new Error('vmid é obrigatório. Use: !proxmox start 103');\n}\n\nif (!proxmoxAction) {\n  throw new Error(`Ação inválida: \"${action}\". Use: start, stop ou restart`);\n}\n\nconst vmMatch  = vmList.find(v => String(v.vmid)  === String(vmid));\nconst lxcMatch = lxcList.find(c => String(c.vmid) === String(vmid));\n\nif (!vmMatch && !lxcMatch) {\n  throw new Error(`ID ${vmid} não encontrado. Verifique com !proxmox`);\n}\n\nconst type          = vmMatch ? 'qemu' : 'lxc';\nconst guest         = vmMatch || lxcMatch;\nconst guestName     = guest.name || `id-${vmid}`;\nconst currentStatus = guest.status;\n\nreturn [{ json: { type, vmid, name: guestName, currentStatus, action, proxmoxAction, host, node } }];"
+      },
+      "id": "0bda54fe-ec05-46f4-a56a-9b1bba90f058",
+      "name": "Detect Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-is-qemu",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "qemu",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d53e75b9-0788-49a1-9892-6c38f42efaab",
+      "name": "IF Is QEMU",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.host }}/api2/json/nodes/{{ $json.node }}/qemu/{{ $json.vmid }}/status/{{ $json.proxmoxAction }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "b5072798-2d71-4900-bffa-6800f8c400d2",
+      "name": "Execute QEMU Action",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1280,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Proxmox"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.host }}/api2/json/nodes/{{ $json.node }}/lxc/{{ $json.vmid }}/status/{{ $json.proxmoxAction }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {}
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "13360cf1-accc-43aa-a377-447add667918",
+      "name": "Execute LXC Action",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1280,
+        208
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Proxmox"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst ctx = $('Detect Type').first().json;\n\nconst actionEmoji = { start: '▶️', stop: '⏹️', restart: '🔄' };\nconst emoji       = actionEmoji[ctx.action] || '⚙️';\nconst typeLabel   = ctx.type === 'qemu' ? '🖥️ VM' : '📦 LXC';\nconst actionPT    = { start: 'iniciado', stop: 'parado', restart: 'reiniciado' };\nconst pastTense   = actionPT[ctx.action] || ctx.action;\n\n// Proxmox retorna string UPID em caso de sucesso\nconst upid    = raw?.data || raw?.body?.data;\nconst success = upid && typeof upid === 'string' && upid.startsWith('UPID:');\n\nlet report;\nif (success) {\n  report = `${emoji} ${typeLabel} **${ctx.name}** (\\`${ctx.vmid}\\`) ${pastTense} com sucesso!\\n> ✅ Tarefa registrada no Proxmox`;\n} else {\n  const errMsg = raw?.message || raw?.body?.message || 'verifique o estado do container/VM';\n  report = `❌ Falha ao executar **${ctx.action}** em **${ctx.name}** (\\`${ctx.vmid}\\`)\\n> ${errMsg}`;\n}\n\nreturn [{ json: { report } }];"
+      },
+      "id": "dab7990a-eadd-4932-b835-8b4508f2ebf6",
+      "name": "Format Action Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ report: $json.report }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "587eeaf6-02c7-4aa1-bba1-14301aca08db",
+      "name": "Respond Action",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        112
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "IF Is Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Is Status": {
+      "main": [
+        [
+          {
+            "node": "Get Node Status",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get RRD Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get VMs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get LXCs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Storage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get VMs (Action)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get LXCs (Action)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Node Status": {
+      "main": [
+        [
+          {
+            "node": "Wrap Node Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get RRD Data": {
+      "main": [
+        [
+          {
+            "node": "Wrap RRD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get VMs": {
+      "main": [
+        [
+          {
+            "node": "Wrap VMs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get LXCs": {
+      "main": [
+        [
+          {
+            "node": "Wrap LXCs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Storage": {
+      "main": [
+        [
+          {
+            "node": "Wrap Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap Node Status": {
+      "main": [
+        [
+          {
+            "node": "Merge Status + RRD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap RRD": {
+      "main": [
+        [
+          {
+            "node": "Merge Status + RRD",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Status + RRD": {
+      "main": [
+        [
+          {
+            "node": "Merge + VMs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap VMs": {
+      "main": [
+        [
+          {
+            "node": "Merge + VMs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge + VMs": {
+      "main": [
+        [
+          {
+            "node": "Merge + LXCs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap LXCs": {
+      "main": [
+        [
+          {
+            "node": "Merge + LXCs",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge + LXCs": {
+      "main": [
+        [
+          {
+            "node": "Merge + Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap Storage": {
+      "main": [
+        [
+          {
+            "node": "Merge + Storage",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge + Storage": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get VMs (Action)": {
+      "main": [
+        [
+          {
+            "node": "Wrap VM List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get LXCs (Action)": {
+      "main": [
+        [
+          {
+            "node": "Wrap LXC List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap VM List": {
+      "main": [
+        [
+          {
+            "node": "Merge VM+LXC Lists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wrap LXC List": {
+      "main": [
+        [
+          {
+            "node": "Merge VM+LXC Lists",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge VM+LXC Lists": {
+      "main": [
+        [
+          {
+            "node": "Detect Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Type": {
+      "main": [
+        [
+          {
+            "node": "IF Is QEMU",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Is QEMU": {
+      "main": [
+        [
+          {
+            "node": "Execute QEMU Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute LXC Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute QEMU Action": {
+      "main": [
+        [
+          {
+            "node": "Format Action Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute LXC Action": {
+      "main": [
+        [
+          {
+            "node": "Format Action Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Action Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

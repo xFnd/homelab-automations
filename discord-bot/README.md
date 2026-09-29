@@ -1,18 +1,47 @@
 # 🤖 FND Security Bot
 
-Bot de Discord em Node.js que serve de interface pros workflows do n8n. Ele valida o comando, chama o webhook certo e formata a resposta.
+Bot de Discord em Node.js que serve de interface pros workflows do n8n e pro stack de mídia do homelab. Ele valida o comando, chama o serviço certo e formata a resposta.
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `bot.js` | Comandos de segurança/infra (chamam o n8n) e servidor HTTP `/notify` |
+| `media.js` | Pedidos de filmes e séries (Jellyseerr, Radarr, Sonarr) com menus e botões do Discord |
 
 ## Comandos
 
 | Comando | Canal | O que faz | Backend |
 |---|---|---|---|
-| `!scan <url>` | `SCAN_CHANNEL_ID` | Reputação da URL (phishing/malicioso) | n8n → `/webhook/discord-command` |
-| `!ip <ipv4>` | `IP_CHANNEL_ID` | Relatório de inteligência do IP | n8n → `/webhook/ip-intel` |
-| `!proxmox [start\|stop\|restart <id>]` | `PROXMOX_CHANNEL_ID` | Dashboard e controle de VMs/LXC | n8n → `/webhook/proxmox-status` |
-| `!filme` / `!serie` / `!fila` / `!cancelar` / `!novidades` | qualquer | Pedidos de mídia | Jellyseerr (`media.js`) |
+| `!scan <url>` | `SCAN_CHANNEL` | Reputação da URL (phishing/malicioso) | n8n → `/webhook/discord-command` |
+| `!ip <ipv4>` | `IP_CHANNEL` | Relatório de inteligência do IP | n8n → `/webhook/ip-intel` |
+| `!proxmox [start\|stop\|restart <id>]` | `PROXMOX_CHANNEL` | Dashboard e controle de VMs/LXC | n8n → `/webhook/proxmox-status` |
+| `!filme <nome>` / `!serie <nome>` | `MEDIA_CHANNEL` | Busca, escolha no menu e pedido | Jellyseerr |
+| `!fila` | `MEDIA_CHANNEL` | O que está baixando, com % e tempo restante | Radarr + Sonarr |
+| `!cancelar` | `MEDIA_CHANNEL` | Cancela downloads em andamento | Radarr + Sonarr + Jellyseerr |
+| `!novidades` | `MEDIA_CHANNEL` | Últimos títulos disponíveis | Jellyseerr |
 | `!help` | qualquer | Lista os comandos | — |
 
-Os comandos de segurança e de infra só respondem no canal configurado pra eles. Assim dá pra restringir quem usa cada um pelas permissões de canal do Discord.
+Os comandos de segurança e de infra só respondem no canal configurado pra eles. Assim dá pra restringir quem usa cada um pelas permissões de canal do Discord. Os de mídia também podem ser limitados a usuários específicos com `MEDIA_ADMINS`.
+
+## Pedidos de mídia (`media.js`)
+
+O fluxo é todo interativo, com os componentes nativos do Discord:
+
+```
+!serie breaking bad
+  → menu com até 5 resultados (mostra se já está na biblioteca)
+  → menu de temporadas (todas ou escolhidas)
+  → embed com pôster, nota e sinopse + botões [✅ Pedir] [❌ Cancelar]
+  → pedido criado no Jellyseerr
+```
+
+Só quem mandou o comando pode clicar nos menus, e cada etapa expira em 2 minutos.
+
+**Com Radarr/Sonarr configurados** (`RADARR_KEY` e `SONARR_KEY`), o bot fala direto com eles:
+
+- `!fila` agrupa os episódios do mesmo torrent numa linha só (`T1 (8 episódios)`) e mostra o progresso real.
+- `!cancelar` faz o cancelamento completo: remove da fila e do qBittorrent, desmonitora o filme/temporada (senão o Radarr/Sonarr baixa de novo), apaga o pedido no Jellyseerr e, se você quiser, tira o título do catálogo. Os arquivos já baixados nunca são apagados.
+
+Sem essas chaves, `!fila` e `!cancelar` funcionam só pelo Jellyseerr, que não enxerga o progresso nem remove o torrent.
 
 ## Contrato com o n8n
 
@@ -27,7 +56,7 @@ O bot faz `POST` com um JSON simples e espera um JSON de volta:
 
 // !proxmox → POST {N8N_BASE_URL}/webhook/proxmox-status
 { "action": "status" }                  // ou
-{ "action": "restart", "vmid": "103" }  // resposta esperada: { "report": "texto pronto" }
+{ "action": "restart", "vmid": "103" }  // resposta: { "report": "texto pronto" }
 ```
 
 O formato de resposta de cada workflow está documentado na pasta dele, em [`../n8n-workflows`](../n8n-workflows).
@@ -47,19 +76,19 @@ curl -X POST http://localhost:3001/notify \
 |---|---|---|
 | `content` | string | Texto (cortado em 2000 caracteres) |
 | `embeds` | array | Até 10 embeds do Discord |
-| `channelId` | string | Opcional. Se não vier, usa `ALERT_CHANNEL_ID` |
+| `channelId` | string | Opcional. Se não vier, usa `ALERT_CHANNEL` |
 
 Proteções: a chave é comparada com `crypto.timingSafeEqual`, o body tem limite de 256 KB e as menções ficam desativadas (`allowedMentions: { parse: [] }`), então um alerta nunca pinga `@everyone`. Também existe `GET /health`, que responde `OK` pra healthcheck.
 
 ## Rodando
 
-Precisa de Node.js 18 ou mais novo.
+Precisa de Node.js 18.17 ou mais novo.
 
 ```bash
 cd discord-bot
-npm install
-cp .env.example .env   # preencha o token, os IDs dos canais e a NOTIFY_KEY
-node bot.js
+npm ci                 # instala as versões exatas do package-lock.json
+cp .env.example .env   # preencha o token, os canais e as chaves
+npm start
 ```
 
 No [Discord Developer Portal](https://discord.com/developers/applications), ative o **Message Content Intent** do bot. Sem ele, o bot não consegue ler os comandos com `!`.
