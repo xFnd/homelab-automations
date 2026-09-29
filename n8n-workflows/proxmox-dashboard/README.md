@@ -18,10 +18,12 @@ flowchart LR
 
     S -- não --> A1["/qemu"] --> D["Descobre se o ID<br/>é VM ou LXC"]
     S -- não --> A2["/lxc"] --> D
-    D --> Q{"VM?"}
+    D --> OK{"ID existe?"}
+    OK -- não --> R2["{ report: ❌ erro }"]
+    OK -- sim --> Q{"VM?"}
     Q -- sim --> E1["POST /qemu/{id}/status/{ação}"] --> FA["Monta resposta"]
     Q -- não --> E2["POST /lxc/{id}/status/{ação}"] --> FA
-    FA --> R2["{ report }"]
+    FA --> R3["{ report }"]
 ```
 
 Detalhes:
@@ -30,6 +32,7 @@ Detalhes:
 - **CPU pela média dos últimos 5 minutos** (`rrddata`), que oscila bem menos que a leitura instantânea. Sem esses dados, cai pra leitura instantânea do `/status`.
 - **O usuário só informa o ID** (`!proxmox restart 103`). O workflow descobre sozinho se é VM (`qemu`) ou container (`lxc`) e chama a rota certa.
 - A resposta é sempre `{ "report": "..." }` já formatado em Markdown do Discord, então o bot só repassa o texto.
+- **Erros também viram `report`**: ID inexistente ou Proxmox inacessível não derrubam a execução. O usuário vê no Discord o que deu errado (`❌ ID 999 não encontrado. Veja os IDs com !proxmox`), e não um erro genérico.
 
 ## Exemplo de relatório (valores ilustrativos)
 
@@ -59,8 +62,10 @@ Detalhes:
 | Comando no bot | Rota no Proxmox | Efeito |
 |---|---|---|
 | `!proxmox start <id>` | `status/start` | Liga |
-| `!proxmox stop <id>` | `status/stop` | Desligamento **imediato**, como tirar da tomada |
+| `!proxmox stop <id>` | `status/shutdown` | Desliga pelo sistema operacional, como apertar o botão de desligar |
 | `!proxmox restart <id>` | `status/reboot` | Reinicia pelo sistema operacional |
+
+O `stop` usa `shutdown`, e não `status/stop`, de propósito: o `status/stop` corta a energia na hora e pode corromper uma VM no meio de uma escrita. Pro `shutdown` funcionar, a VM precisa responder ao botão de desligar (ACPI) ou ter o `qemu-guest-agent`. Se ela ignorar, a tarefa falha no Proxmox depois do timeout e a VM continua ligada; aí o desligamento forçado fica pela interface do Proxmox. Containers LXC sempre respondem.
 
 ## Configuração
 
