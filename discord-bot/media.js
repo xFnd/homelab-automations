@@ -10,9 +10,7 @@
      JELLYSEERR_URL=http://localhost:5055
      JELLYSEERR_KEY=<API Key do Jellyseerr>
      MEDIA_CHANNEL=<ID do canal de pedidos>
-     MEDIA_ADMINS=<seu ID do Discord>   pedem e cancelam (vários: separados por vírgula)
-     MEDIA_USERS=<IDs do Discord>       só pedem e consultam (* = todo mundo)
-   Sem ninguém em MEDIA_ADMINS/MEDIA_USERS, os comandos de mídia ficam bloqueados.
+   Quem pode usar: quem tem acesso ao MEDIA_CHANNEL (controle pelas permissões do canal).
 
    Opcional — com as chaves do Radarr/Sonarr, !fila mostra progresso real
    e !cancelar remove o torrent, desmonitora e apaga o pedido:
@@ -30,13 +28,9 @@ const {
   MessageFlags,
 } = require("discord.js");
 
-const listaIds = (valor) => (valor || "").split(",").map((s) => s.trim()).filter(Boolean);
-
 const JS_URL        = (process.env.JELLYSEERR_URL || "http://localhost:5055").replace(/\/+$/, "");
 const JS_KEY        = process.env.JELLYSEERR_KEY || "";
 const MEDIA_CHANNEL = process.env.MEDIA_CHANNEL || "";
-const ADMINS        = listaIds(process.env.MEDIA_ADMINS);
-const USERS         = listaIds(process.env.MEDIA_USERS);
 
 const RADARR = { url: (process.env.RADARR_URL || "http://localhost:7878").replace(/\/+$/, ""), key: process.env.RADARR_KEY || "" };
 const SONARR = { url: (process.env.SONARR_URL || "http://localhost:8989").replace(/\/+$/, ""), key: process.env.SONARR_KEY || "" };
@@ -58,12 +52,7 @@ function arrApi(cfg) {
 }
 const temArrs = () => Boolean(RADARR.key && SONARR.key);
 
-/* ─── Permissões ─────────────────────────────────────────────────── */
-// Admins pedem e cancelam; usuários só pedem e consultam ("*" libera pra todos).
-// Sem ninguém configurado fica tudo bloqueado: num repositório público, o padrão é fechado.
-const podeUsar     = (id) => ADMINS.includes(id) || USERS.includes("*") || USERS.includes(id);
-const podeCancelar = (id) => ADMINS.includes(id);
-
+/* ─── Menus ──────────────────────────────────────────────────────── */
 // Menus e botões só aceitam quem mandou o comando. Os outros recebem um aviso só pra eles,
 // em vez do "Esta interação falhou" do Discord.
 function soDoAutor(message) {
@@ -760,15 +749,6 @@ async function comandoBusca(message, tipo, termo) {
 /* ─── Entrada ────────────────────────────────────────────────────── */
 async function handleMediaCommand(message, command, args) {
   if (MEDIA_CHANNEL && message.channel.id !== MEDIA_CHANNEL) return;
-  if (!ADMINS.length && !USERS.length) {
-    return message.reply("⚠️ Comandos de mídia desativados: configure `MEDIA_ADMINS` no `.env` do bot.");
-  }
-  if (!podeUsar(message.author.id)) {
-    return message.reply("⛔ Você não tem permissão pra usar os comandos de mídia.");
-  }
-  if (command === "cancelar" && !podeCancelar(message.author.id)) {
-    return message.reply("⛔ Só admins podem cancelar downloads.");
-  }
   if (!JS_KEY) return message.reply("⚠️ Falta a `JELLYSEERR_KEY` no `.env` do bot.");
 
   if (command === "fila") return comandoFila(message);
@@ -790,5 +770,5 @@ module.exports = {
   _internals: { buscar, detalhes, pedir, processando, pedidosPorFiltro, apagarPedido, ultimosDisponiveis, corta, tituloDe, anoDe, JS_URL,
                 filaRadarr, filaSonarr, filaCompleta, agrupar, linhaFila, removerDaFila, desmonitorar, removerDoCatalogo, apagarPedidoDe, tamanho,
                 menuResultados, menuTemporadas, botoes, embedDetalhe,
-                temporadasExistentes, temporadasPediveis, podePedirStatus, podeUsar, podeCancelar, nomesDe, soDoAutor },
+                temporadasExistentes, temporadasPediveis, podePedirStatus, nomesDe, soDoAutor },
 };

@@ -20,7 +20,7 @@ Bot de Discord em Node.js que serve de interface pros workflows do n8n e pro sta
 | `!novidades` | `MEDIA_CHANNEL` | Últimos títulos disponíveis | Jellyseerr |
 | `!help` | qualquer | Lista os comandos | — |
 
-Os comandos de segurança e de infra só respondem no canal configurado pra eles. Assim dá pra restringir quem usa cada um pelas permissões de canal do Discord. Os de mídia têm, além disso, permissão por usuário (veja abaixo).
+Os comandos de segurança e de infra só respondem no canal configurado pra eles. Assim dá pra restringir quem usa cada um pelas permissões de canal do Discord. Os de mídia seguem a mesma ideia: quem tem acesso ao `MEDIA_CHANNEL` pode pedir, consultar e cancelar.
 
 ## Pedidos de mídia (`media.js`)
 
@@ -38,14 +38,7 @@ Só quem mandou o comando pode clicar nos menus. Se outra pessoa clicar, recebe 
 
 **Série que você já tem em parte** (ex.: saiu a temporada 4 e você tem da 1 à 3): o menu mostra só as temporadas que faltam, com a mesma regra que o Jellyseerr usa pra aceitar o pedido. Se não faltar nenhuma, o bot avisa que a série já está na lista.
 
-### Permissões
-
-| Variável | Quem | Pode |
-|---|---|---|
-| `MEDIA_ADMINS` | IDs de usuário do Discord | Tudo, inclusive `!cancelar` |
-| `MEDIA_USERS` | IDs de usuário, ou `*` pra todo mundo | `!filme`, `!serie`, `!fila` e `!novidades` |
-
-Com as duas vazias, os comandos de mídia ficam bloqueados. É de propósito: o `!cancelar` remove torrents e pode tirar títulos do Radarr/Sonarr, então quem instala precisa liberar alguém explicitamente.
+> **Quem pode usar:** o controle é feito pelas permissões do canal no Discord. Quem vê o `MEDIA_CHANNEL` pode fazer tudo, inclusive `!cancelar`, que remove torrents e pode tirar títulos do Radarr/Sonarr. Deixe o canal visível só pra quem deve ter esse poder. Sem `MEDIA_CHANNEL` definido, os comandos funcionam em qualquer canal, então defina.
 
 **Com Radarr/Sonarr configurados** (`RADARR_KEY` e `SONARR_KEY`), o bot fala direto com eles:
 
