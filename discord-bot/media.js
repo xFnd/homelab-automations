@@ -10,7 +10,9 @@
      JELLYSEERR_URL=http://localhost:5055
      JELLYSEERR_KEY=<API Key do Jellyseerr>
      MEDIA_CHANNEL=<ID do canal de pedidos>
-     MEDIA_ADMINS=<seu ID do Discord>   (vários: separados por vírgula)
+     MEDIA_ADMINS=<seu ID do Discord>   pedem e cancelam (vários: separados por vírgula)
+     MEDIA_USERS=<IDs do Discord>       só pedem e consultam (* = todo mundo)
+   Sem ninguém em MEDIA_ADMINS/MEDIA_USERS, os comandos de mídia ficam bloqueados.
 
    Opcional — com as chaves do Radarr/Sonarr, !fila mostra progresso real
    e !cancelar remove o torrent, desmonitora e apaga o pedido:
@@ -25,12 +27,16 @@ const {
   ButtonStyle,
   ComponentType,
   EmbedBuilder,
+  MessageFlags,
 } = require("discord.js");
+
+const listaIds = (valor) => (valor || "").split(",").map((s) => s.trim()).filter(Boolean);
 
 const JS_URL        = (process.env.JELLYSEERR_URL || "http://localhost:5055").replace(/\/+$/, "");
 const JS_KEY        = process.env.JELLYSEERR_KEY || "";
 const MEDIA_CHANNEL = process.env.MEDIA_CHANNEL || "";
-const ADMINS        = (process.env.MEDIA_ADMINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+const ADMINS        = listaIds(process.env.MEDIA_ADMINS);
+const USERS         = listaIds(process.env.MEDIA_USERS);
 
 const RADARR = { url: (process.env.RADARR_URL || "http://localhost:7878").replace(/\/+$/, ""), key: process.env.RADARR_KEY || "" };
 const SONARR = { url: (process.env.SONARR_URL || "http://localhost:8989").replace(/\/+$/, ""), key: process.env.SONARR_KEY || "" };
@@ -52,17 +58,72 @@ function arrApi(cfg) {
 }
 const temArrs = () => Boolean(RADARR.key && SONARR.key);
 
+/* ─── Permissões ─────────────────────────────────────────────────── */
+// Admins pedem e cancelam; usuários só pedem e consultam ("*" libera pra todos).
+// Sem ninguém configurado fica tudo bloqueado: num repositório público, o padrão é fechado.
+const podeUsar     = (id) => ADMINS.includes(id) || USERS.includes("*") || USERS.includes(id);
+const podeCancelar = (id) => ADMINS.includes(id);
+
+// Menus e botões só aceitam quem mandou o comando. Os outros recebem um aviso só pra eles,
+// em vez do "Esta interação falhou" do Discord.
+function soDoAutor(message) {
+  return (i) => {
+    if (i.user.id === message.author.id) return true;
+    i.reply({ content: "🔒 Esse menu é de outra pessoa. Mande o seu próprio comando.", flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+    return false;
+  };
+}
+
 /* ─── Helpers ────────────────────────────────────────────────────── */
+// Status de mídia do Jellyseerr. 1 (desconhecido) e 7 (deletado) ainda podem ser pedidos.
 const STATUS_LABEL = {
   2: "⏳ já pedido",
   3: "📥 baixando",
   4: "🟡 parcialmente disponível",
   5: "✅ já está na biblioteca",
+  6: "🚫 na blocklist",
 };
+const podePedirStatus = (status) => status == null || status === 1 || status === 7;
+
+// Status de pedido do Jellyseerr
+const PEDIDO_RECUSADO  = 3;
+const PEDIDO_CONCLUIDO = 5;
 
 function tituloDe(r)  { return r.title || r.name || r.originalTitle || r.originalName || "Sem título"; }
 function anoDe(r)     { return String(r.releaseDate || r.firstAirDate || "").slice(0, 4) || "?"; }
 function statusDe(r)  { return STATUS_LABEL[r?.mediaInfo?.status] || null; }
+
+// Mesma regra do servidor do Jellyseerr: uma temporada já existe se está num pedido ativo
+// (nem recusado nem concluído) ou se tem qualquer status além de desconhecido/deletado.
+function temporadasExistentes(detalhe) {
+  const info = detalhe?.mediaInfo;
+  if (!info) return [];
+  const pedidas = (info.requests || [])
+    .filter((p) => !p.is4k && p.status !== PEDIDO_RECUSADO && p.status !== PEDIDO_CONCLUIDO)
+    .flatMap((p) => (p.seasons || []).map((s) => s.seasonNumber));
+  const naBiblioteca = (info.seasons || [])
+    .filter((s) => !podePedirStatus(s.status))
+    .map((s) => s.seasonNumber);
+  return [...new Set([...pedidas, ...naBiblioteca])].filter((n) => n > 0).sort((a, b) => a - b);
+}
+
+function temporadasPediveis(detalhe) {
+  const existentes = temporadasExistentes(detalhe);
+  return (detalhe.seasons || []).filter((s) => s.seasonNumber > 0 && !existentes.includes(s.seasonNumber));
+}
+
+// Busca os títulos em paralelo (antes era um por vez: 20 itens = 20 esperas seguidas)
+function nomesDe(itens) {
+  return Promise.all(itens.map(async ({ tipo, tmdbId }) => {
+    try {
+      const d = await detalhes(tipo, tmdbId);
+      return `${tituloDe(d)} (${anoDe(d)})`;
+    } catch (_) {
+      return `TMDB ${tmdbId}`; // segue com o ID
+    }
+  }));
+}
 
 function corta(texto, max) {
   const s = String(texto || "").replace(/\s+/g, " ").trim();
@@ -256,14 +317,27 @@ async function removerDoCatalogo(it) {
   return it.origem === "radarr" ? "filme removido do Radarr" : "série removida do Sonarr";
 }
 
+// Apaga no Jellyseerr os pedidos do que foi cancelado. Um pedido de série que também cobre
+// outras temporadas fica: apagá-lo tiraria do Jellyseerr temporadas que seguem baixando.
 async function apagarPedidoDe(it) {
   const { data } = await api.get("/request", { params: { take: 50, filter: "all", sort: "added", skip: 0 } });
-  const alvo = (data.results || []).find((p) =>
-    it.origem === "radarr" ? p.media?.tmdbId === it.tmdbId : p.media?.tvdbId === it.tvdbId
+  const canceladas = it.temporadas?.size ? [...it.temporadas] : [it.seasonNumber];
+  const doTitulo = (data.results || []).filter((p) =>
+    it.origem === "radarr"
+      // o tipo importa: filme e série podem ter o mesmo número de ID no TMDB
+      ? p.type === "movie" && p.media?.tmdbId === it.tmdbId
+      : p.type === "tv" && p.media?.tvdbId === it.tvdbId &&
+        (p.seasons || []).some((s) => canceladas.includes(s.seasonNumber))
   );
-  if (!alvo) return null;
-  await apagarPedido(alvo.id);
-  return alvo.id;
+
+  let apagados = 0, mantidos = 0;
+  for (const p of doTitulo) {
+    const temOutras = it.origem === "sonarr" && (p.seasons || []).some((s) => !canceladas.includes(s.seasonNumber));
+    if (temOutras) { mantidos += 1; continue; }
+    await apagarPedido(p.id);
+    apagados += 1;
+  }
+  return { apagados, mantidos };
 }
 
 /* ─── Blocos visuais ─────────────────────────────────────────────── */
@@ -284,15 +358,16 @@ function menuResultados(resultados) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function menuTemporadas(detalhe) {
-  const temporadas = (detalhe.seasons || []).filter((s) => s.seasonNumber > 0).slice(0, 24);
+// Recebe só as temporadas que ainda dá pra pedir. `parcial` = a série já tem outras.
+function menuTemporadas(pediveis, parcial = false) {
+  const temporadas = pediveis.slice(0, 24);
   const menu = new StringSelectMenuBuilder()
     .setCustomId("temporadas")
     .setPlaceholder("Quais temporadas?")
     .setMinValues(1)
     .setMaxValues(temporadas.length + 1)
     .addOptions([
-      { label: "Todas as temporadas", value: "all", description: `${temporadas.length} temporada(s)` },
+      { label: parcial ? "Todas as que faltam" : "Todas as temporadas", value: "all", description: `${pediveis.length} temporada(s)` },
       ...temporadas.map((s) => ({
         label: corta(`Temporada ${s.seasonNumber}`, 100),
         description: corta(`${s.episodeCount || "?"} episódios${s.airDate ? ` — ${String(s.airDate).slice(0, 4)}` : ""}`, 100),
@@ -341,17 +416,12 @@ async function comandoFila(message) {
     // sem as chaves do Radarr/Sonarr: mostra só os títulos, pelo Jellyseerr
     const pedidos = await processando();
     if (!pedidos.length) return aviso.edit("✅ Nada sendo baixado no momento.");
-    const linhas = [];
-    for (const p of pedidos.slice(0, 10)) {
-      const tipo = p.type === "tv" ? "tv" : "movie";
-      let nome = `TMDB ${p.media?.tmdbId}`;
-      try {
-        const d = await detalhes(tipo, p.media.tmdbId);
-        nome = `${tituloDe(d)} (${anoDe(d)})`;
-      } catch (_) { /* segue com o ID */ }
+    const lista = pedidos.slice(0, 10);
+    const nomes = await nomesDe(lista.map((p) => ({ tipo: p.type === "tv" ? "tv" : "movie", tmdbId: p.media?.tmdbId })));
+    const linhas = lista.map((p, i) => {
       const temps = p.seasons?.length ? ` — temporada(s) ${p.seasons.map((s) => s.seasonNumber).join(", ")}` : "";
-      linhas.push(`${tipo === "movie" ? "🎬" : "📺"} **${nome}**${temps}`);
-    }
+      return `${p.type === "tv" ? "📺" : "🎬"} **${nomes[i]}**${temps}`;
+    });
     await aviso.edit(`📥 **Baixando agora (${pedidos.length})**\n\n${linhas.join("\n")}`);
   } catch (error) {
     console.error("[!fila] Error:", error.message);
@@ -366,17 +436,11 @@ async function comandoNovidades(message) {
     const itens = await ultimosDisponiveis(10);
     if (!itens.length) return aviso.edit("🤷 Nada marcado como disponível ainda.");
 
-    const linhas = [];
-    for (const m of itens) {
-      const tipo = m.mediaType === "tv" ? "tv" : "movie";
-      let nome = `TMDB ${m.tmdbId}`;
-      try {
-        const d = await detalhes(tipo, m.tmdbId);
-        nome = `${tituloDe(d)} (${anoDe(d)})`;
-      } catch (_) { /* segue com o ID */ }
+    const nomes = await nomesDe(itens.map((m) => ({ tipo: m.mediaType === "tv" ? "tv" : "movie", tmdbId: m.tmdbId })));
+    const linhas = itens.map((m, i) => {
       const quando = m.mediaAddedAt ? ` — ${new Date(m.mediaAddedAt).toLocaleDateString("pt-BR")}` : "";
-      linhas.push(`${tipo === "movie" ? "🎬" : "📺"} **${nome}**${quando}`);
-    }
+      return `${m.mediaType === "tv" ? "📺" : "🎬"} **${nomes[i]}**${quando}`;
+    });
     await aviso.edit(`✅ **Últimos títulos disponíveis**\n\n${linhas.join("\n")}`);
   } catch (error) {
     console.error("[!novidades] Error:", error.message);
@@ -403,16 +467,11 @@ async function comandoCancelar(message) {
     }
     if (!pedidos.length) return aviso.edit("✅ Não há pedido em aberto pra cancelar.");
 
-    const opcoes = [];
-    for (const p of pedidos) {
-      const tipo = p.type === "tv" ? "tv" : "movie";
-      let nome = `TMDB ${p.media?.tmdbId}`;
-      try {
-        const d = await detalhes(tipo, p.media.tmdbId);
-        nome = `${tituloDe(d)} (${anoDe(d)})`;
-      } catch (_) { /* segue com o ID */ }
-      opcoes.push({ label: corta(`${tipo === "movie" ? "🎬" : "📺"} ${nome}`, 100), value: String(p.id) });
-    }
+    const nomes = await nomesDe(pedidos.map((p) => ({ tipo: p.type === "tv" ? "tv" : "movie", tmdbId: p.media?.tmdbId })));
+    const opcoes = pedidos.map((p, i) => ({
+      label: corta(`${p.type === "tv" ? "📺" : "🎬"} ${nomes[i]}`, 100),
+      value: String(p.id),
+    }));
     const menu = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder().setCustomId("cancelar").setPlaceholder("Qual pedido cancelar?").addOptions(opcoes)
     );
@@ -421,7 +480,7 @@ async function comandoCancelar(message) {
     let escolha;
     try {
       escolha = await aviso.awaitMessageComponent({
-        filter: (i) => i.user.id === message.author.id,
+        filter: soDoAutor(message),
         componentType: ComponentType.StringSelect,
         time: ESPERA,
       });
@@ -475,7 +534,7 @@ async function comandoCancelar(message) {
   let escolha;
   try {
     escolha = await aviso.awaitMessageComponent({
-      filter: (i) => i.user.id === message.author.id,
+      filter: soDoAutor(message),
       componentType: ComponentType.StringSelect,
       time: ESPERA,
     });
@@ -506,8 +565,10 @@ async function comandoCancelar(message) {
     }
 
     try {
-      const id = await apagarPedidoDe(alvo);
-      passos.push(id ? "✅ pedido apagado no Jellyseerr" : "ℹ️ não havia pedido no Jellyseerr");
+      const { apagados, mantidos } = await apagarPedidoDe(alvo);
+      if (apagados) passos.push("✅ pedido apagado no Jellyseerr");
+      if (mantidos) passos.push("ℹ️ pedido mantido no Jellyseerr (ele cobre outras temporadas)");
+      if (!apagados && !mantidos) passos.push("ℹ️ não havia pedido no Jellyseerr");
     } catch (error) {
       console.error("[!cancelar] Jellyseerr:", error.message);
       passos.push(`❌ Jellyseerr: ${erroApi(error)}`);
@@ -537,7 +598,7 @@ async function comandoCancelar(message) {
   let clique;
   try {
     clique = await aviso.awaitMessageComponent({
-      filter: (i) => i.user.id === message.author.id,
+      filter: soDoAutor(message),
       componentType: ComponentType.Button,
       time: ESPERA,
     });
@@ -588,7 +649,7 @@ async function comandoBusca(message, tipo, termo) {
   let escolha;
   try {
     escolha = await aviso.awaitMessageComponent({
-      filter: (i) => i.user.id === message.author.id,
+      filter: soDoAutor(message),
       componentType: ComponentType.StringSelect,
       time: ESPERA,
     });
@@ -607,27 +668,43 @@ async function comandoBusca(message, tipo, termo) {
   }
 
   const situacao = statusDe(detalhe);
-  if (detalhe?.mediaInfo?.status >= 2) {
+
+  // Série parcialmente disponível ainda aceita as temporadas que faltam;
+  // só bloqueia quando não sobrou nenhuma. Filme bloqueia se já existe.
+  const existentes = tipo === "tv" ? temporadasExistentes(detalhe) : [];
+  const pediveis   = tipo === "tv" ? temporadasPediveis(detalhe) : [];
+
+  if (tipo === "tv" && !pediveis.length && !existentes.length) {
     return aviso.edit({
-      content: `ℹ️ Esse título já está na sua lista: **${situacao}**.`,
-      embeds: [embedDetalhe(detalhe, tipo, situacao)],
+      content: "🤷 O TMDB ainda não tem temporadas cadastradas pra essa série.",
+      embeds: [embedDetalhe(detalhe, tipo)],
+      components: [],
+    });
+  }
+  if (tipo === "tv" ? !pediveis.length : !podePedirStatus(detalhe?.mediaInfo?.status)) {
+    const rotulo = situacao || STATUS_LABEL[2];
+    return aviso.edit({
+      content: `ℹ️ Esse título já está na sua lista: **${rotulo}**.`,
+      embeds: [embedDetalhe(detalhe, tipo, rotulo)],
       components: [],
     });
   }
 
   /* 2) temporadas (só séries) */
   let temporadas = "all";
+  const parcial = existentes.length > 0;
   if (tipo === "tv") {
+    const jaTem = parcial ? `🟡 Já tem ou já pediu: T${existentes.join(", T")}` : undefined;
     await aviso.edit({
-      content: "📺 Quais temporadas você quer?",
-      embeds: [embedDetalhe(detalhe, tipo)],
-      components: [menuTemporadas(detalhe)],
+      content: parcial ? "📺 Quais das temporadas que faltam você quer?" : "📺 Quais temporadas você quer?",
+      embeds: [embedDetalhe(detalhe, tipo, jaTem)],
+      components: [menuTemporadas(pediveis, parcial)],
     });
 
     let escolhaTemp;
     try {
       escolhaTemp = await aviso.awaitMessageComponent({
-        filter: (i) => i.user.id === message.author.id,
+        filter: soDoAutor(message),
         componentType: ComponentType.StringSelect,
         time: ESPERA,
       });
@@ -640,7 +717,8 @@ async function comandoBusca(message, tipo, termo) {
 
   /* 3) confirmação */
   const resumo = tipo === "tv"
-    ? `Temporadas: **${temporadas === "all" ? "todas" : temporadas.join(", ")}**`
+    // "all" com série parcial: o Jellyseerr pede só as que faltam (ele mesmo descarta as existentes)
+    ? `Temporadas: **${temporadas === "all" ? (parcial ? "todas as que faltam" : "todas") : temporadas.join(", ")}**`
     : "Filme completo";
 
   await aviso.edit({
@@ -652,7 +730,7 @@ async function comandoBusca(message, tipo, termo) {
   let clique;
   try {
     clique = await aviso.awaitMessageComponent({
-      filter: (i) => i.user.id === message.author.id,
+      filter: soDoAutor(message),
       componentType: ComponentType.Button,
       time: ESPERA,
     });
@@ -682,8 +760,14 @@ async function comandoBusca(message, tipo, termo) {
 /* ─── Entrada ────────────────────────────────────────────────────── */
 async function handleMediaCommand(message, command, args) {
   if (MEDIA_CHANNEL && message.channel.id !== MEDIA_CHANNEL) return;
-  if (ADMINS.length && !ADMINS.includes(message.author.id)) {
-    return message.reply("⛔ Só o dono do servidor pode pedir mídia por aqui.");
+  if (!ADMINS.length && !USERS.length) {
+    return message.reply("⚠️ Comandos de mídia desativados: configure `MEDIA_ADMINS` no `.env` do bot.");
+  }
+  if (!podeUsar(message.author.id)) {
+    return message.reply("⛔ Você não tem permissão pra usar os comandos de mídia.");
+  }
+  if (command === "cancelar" && !podeCancelar(message.author.id)) {
+    return message.reply("⛔ Só admins podem cancelar downloads.");
   }
   if (!JS_KEY) return message.reply("⚠️ Falta a `JELLYSEERR_KEY` no `.env` do bot.");
 
@@ -705,5 +789,6 @@ module.exports = {
   // exportados para teste
   _internals: { buscar, detalhes, pedir, processando, pedidosPorFiltro, apagarPedido, ultimosDisponiveis, corta, tituloDe, anoDe, JS_URL,
                 filaRadarr, filaSonarr, filaCompleta, agrupar, linhaFila, removerDaFila, desmonitorar, removerDoCatalogo, apagarPedidoDe, tamanho,
-                menuResultados, menuTemporadas, botoes, embedDetalhe },
+                menuResultados, menuTemporadas, botoes, embedDetalhe,
+                temporadasExistentes, temporadasPediveis, podePedirStatus, podeUsar, podeCancelar, nomesDe, soDoAutor },
 };

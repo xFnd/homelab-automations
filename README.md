@@ -117,7 +117,7 @@ Dá pra usar só uma parte: sem as chaves do Jellyseerr, os comandos de mídia s
 
 - **Nenhuma chave neste repositório.** As chaves de API ficam nas *Credentials* do n8n, e os tokens do bot ficam no `.env` (modelo em [`.env.example`](discord-bot/.env.example)).
 - O endpoint `/notify` exige o header `X-Notify-Key`, comparado em tempo constante (`crypto.timingSafeEqual`), e envia as mensagens com `allowedMentions: { parse: [] }`, então nunca dispara `@everyone`.
-- Cada comando só funciona no canal configurado pra ele, e os pedidos de mídia podem ser restritos a usuários específicos.
+- Cada comando só funciona no canal configurado pra ele. Na mídia, só admins cancelam downloads, e sem ninguém configurado os comandos ficam bloqueados.
 - O token do Proxmox usa um papel com só 4 permissões (leitura + liga/desliga). O passo a passo está no [README do workflow](n8n-workflows/proxmox-dashboard).
 - Dependências fixadas no `package-lock.json` e verificadas com `npm audit`.
 

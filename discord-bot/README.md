@@ -20,7 +20,7 @@ Bot de Discord em Node.js que serve de interface pros workflows do n8n e pro sta
 | `!novidades` | `MEDIA_CHANNEL` | Últimos títulos disponíveis | Jellyseerr |
 | `!help` | qualquer | Lista os comandos | — |
 
-Os comandos de segurança e de infra só respondem no canal configurado pra eles. Assim dá pra restringir quem usa cada um pelas permissões de canal do Discord. Os de mídia também podem ser limitados a usuários específicos com `MEDIA_ADMINS`.
+Os comandos de segurança e de infra só respondem no canal configurado pra eles. Assim dá pra restringir quem usa cada um pelas permissões de canal do Discord. Os de mídia têm, além disso, permissão por usuário (veja abaixo).
 
 ## Pedidos de mídia (`media.js`)
 
@@ -29,17 +29,28 @@ O fluxo é todo interativo, com os componentes nativos do Discord:
 ```
 !serie breaking bad
   → menu com até 5 resultados (mostra se já está na biblioteca)
-  → menu de temporadas (todas ou escolhidas)
+  → menu de temporadas (só as que você ainda não tem nem pediu)
   → embed com pôster, nota e sinopse + botões [✅ Pedir] [❌ Cancelar]
   → pedido criado no Jellyseerr
 ```
 
-Só quem mandou o comando pode clicar nos menus, e cada etapa expira em 2 minutos.
+Só quem mandou o comando pode clicar nos menus. Se outra pessoa clicar, recebe um aviso que só ela vê. Cada etapa expira em 2 minutos.
+
+**Série que você já tem em parte** (ex.: saiu a temporada 4 e você tem da 1 à 3): o menu mostra só as temporadas que faltam, com a mesma regra que o Jellyseerr usa pra aceitar o pedido. Se não faltar nenhuma, o bot avisa que a série já está na lista.
+
+### Permissões
+
+| Variável | Quem | Pode |
+|---|---|---|
+| `MEDIA_ADMINS` | IDs de usuário do Discord | Tudo, inclusive `!cancelar` |
+| `MEDIA_USERS` | IDs de usuário, ou `*` pra todo mundo | `!filme`, `!serie`, `!fila` e `!novidades` |
+
+Com as duas vazias, os comandos de mídia ficam bloqueados. É de propósito: o `!cancelar` remove torrents e pode tirar títulos do Radarr/Sonarr, então quem instala precisa liberar alguém explicitamente.
 
 **Com Radarr/Sonarr configurados** (`RADARR_KEY` e `SONARR_KEY`), o bot fala direto com eles:
 
 - `!fila` agrupa os episódios do mesmo torrent numa linha só (`T1 (8 episódios)`) e mostra o progresso real.
-- `!cancelar` faz o cancelamento completo: remove da fila e do qBittorrent, desmonitora o filme/temporada (senão o Radarr/Sonarr baixa de novo), apaga o pedido no Jellyseerr e, se você quiser, tira o título do catálogo. Os arquivos já baixados nunca são apagados.
+- `!cancelar` faz o cancelamento completo: remove da fila e do qBittorrent, desmonitora o filme/temporada (senão o Radarr/Sonarr baixa de novo), apaga o pedido no Jellyseerr e, se você quiser, tira o título do catálogo. Os arquivos já baixados nunca são apagados. Se o pedido da série também cobre outras temporadas, ele é mantido no Jellyseerr pra não afetar o que continua baixando.
 
 Sem essas chaves, `!fila` e `!cancelar` funcionam só pelo Jellyseerr, que não enxerga o progresso nem remove o torrent.
 
