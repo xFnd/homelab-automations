@@ -54,6 +54,8 @@ Com as duas vazias, os comandos de mídia ficam bloqueados. É de propósito: o 
 
 Sem essas chaves, `!fila` e `!cancelar` funcionam só pelo Jellyseerr, que não enxerga o progresso nem remove o torrent.
 
+**Aviso de "chegou":** quando o título fica disponível, o Jellyseerr avisa o n8n, que posta no canal de mídia pelo `/notify` e marca quem pediu. A configuração está no workflow [`media-notifications`](../n8n-workflows/media-notifications).
+
 ## Contrato com o n8n
 
 O bot faz `POST` com um JSON simples e espera um JSON de volta:
@@ -87,9 +89,11 @@ curl -X POST http://localhost:3001/notify \
 |---|---|---|
 | `content` | string | Texto (cortado em 2000 caracteres) |
 | `embeds` | array | Até 10 embeds do Discord |
-| `channelId` | string | Opcional. Se não vier, usa `ALERT_CHANNEL` |
+| `channelId` | string | Opcional. ID do canal de destino |
+| `channel` | `"alert"` \| `"media"` | Opcional. Apelido pro `ALERT_CHANNEL` ou `MEDIA_CHANNEL`, pra quem chama não precisar saber IDs. Sem `channelId` nem `channel`, vai pro `ALERT_CHANNEL` |
+| `mentionUsers` | array | Opcional. IDs de usuário que podem ser pingados (até 10), ex.: quem pediu o filme |
 
-Proteções: a chave é comparada com `crypto.timingSafeEqual`, o body tem limite de 256 KB e as menções ficam desativadas (`allowedMentions: { parse: [] }`), então um alerta nunca pinga `@everyone`. Também existe `GET /health`, que responde `OK` pra healthcheck.
+Proteções: a chave é comparada com `crypto.timingSafeEqual`, o body tem limite de 256 KB e só são pingados os IDs de usuário listados em `mentionUsers` (`allowedMentions: { parse: [], users: [...] }`). Um alerta nunca pinga `@everyone` nem cargos. Também existe `GET /health`, que responde `OK` pra healthcheck.
 
 ## Rodando
 

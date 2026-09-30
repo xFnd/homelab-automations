@@ -1,0 +1,97 @@
+{
+  "name": "🎬 Media Notifications (Jellyseerr → Discord)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "jellyseerr-events",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "0f3c7a51-5b6e-4a8c-9d21-7e4b2c1a9f01",
+      "name": "Webhook - Jellyseerr",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        0
+      ],
+      "webhookId": "jellyseerr-events-webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Jellyseerr Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─────────────────────────────────────────────\n// ⚙️  CONFIGURE AQUI\n// ─────────────────────────────────────────────\nconst BOT_URL = 'http://localhost:3001'; // onde o bot escuta o /notify (HTTP_PORT do .env do bot)\n// ─────────────────────────────────────────────\n\nconst raw  = $input.first().json;\nconst p    = raw.body || raw;\nconst tipo = String(p.notification_type || '');\n\n// Só estes tipos viram mensagem; o resto (pendente, aprovado, issues...) é ignorado\nconst TIPOS = {\n  MEDIA_AVAILABLE:   { titulo: '✅ Chegou', cor: 0x57f287 },\n  MEDIA_FAILED:      { titulo: '❌ Falhou o download de', cor: 0xed4245 },\n  TEST_NOTIFICATION: { titulo: '🧪 Teste do Jellyseerr: a integração está funcionando', cor: 0x5865f2 },\n};\nconst t = TIPOS[tipo];\nif (!t) return [];\n\n// Variável que a versão do Jellyseerr não conhece chega literal (\"{{...}}\"): vira vazio\nconst valor = (v) => (typeof v === 'string' && !v.includes('{{') ? v.trim() : '');\n\n// ID do Discord de quem pediu: \"discordId\" até o Jellyseerr v3.2, \"discordIds\" do v3.3 em diante\n// (pode vir \"id1,id2\"). Os dois são aceitos.\nconst req  = p.request || {};\nconst ids  = [valor(req.requestedBy_settings_discordIds), valor(req.requestedBy_settings_discordId)]\n  .join(',')\n  .split(/[\\s,]+/)\n  .filter((id) => /^\\d{17,20}$/.test(id));\nconst mencoes = [...new Set(ids)];\n\nconst assunto = valor(p.subject) || 'Sem título';\nconst embed = {\n  title: (tipo === 'TEST_NOTIFICATION' ? t.titulo : `${t.titulo}: ${assunto}`).slice(0, 256),\n  color: t.cor,\n};\nconst sinopse = valor(p.message);\nif (sinopse) embed.description = sinopse.slice(0, 500);\nif (valor(p.image).startsWith('https://')) embed.thumbnail = { url: valor(p.image) };\n\nconst fields = [];\nfor (const e of Array.isArray(p.extra) ? p.extra : []) {\n  const nome = valor(e?.name), v = valor(e?.value);\n  if (nome && v) fields.push({ name: nome === 'Requested Seasons' ? 'Temporadas' : nome, value: v.slice(0, 1024), inline: true });\n}\nconst quem = valor(req.requestedBy_username);\nif (quem) fields.push({ name: 'Pedido por', value: quem.slice(0, 1024), inline: true });\nif (fields.length) embed.fields = fields;\n\n// Só o aviso de \"chegou\" marca quem pediu\nconst marcar  = tipo === 'MEDIA_AVAILABLE' ? mencoes : [];\nconst payload = { embeds: [embed], channel: 'media', mentionUsers: marcar };\nif (marcar.length) payload.content = `${marcar.map((id) => `<@${id}>`).join(' ')} seu pedido chegou! 🍿`;\n\nreturn [{ json: { botUrl: BOT_URL.replace(/\\/+$/, ''), payload } }];"
+      },
+      "id": "4b8d2e63-1c9f-4f7a-8e55-2a6d9b3c7e02",
+      "name": "Monta Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.botUrl }}/notify",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "9e1a4c77-6d2b-4b3e-a1f8-5c7d8e9f0a03",
+      "name": "Posta no Discord (/notify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -80,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Discord Bot (/notify)"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Jellyseerr": {
+      "main": [
+        [
+          {
+            "node": "Monta Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monta Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Posta no Discord (/notify)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

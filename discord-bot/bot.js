@@ -10,6 +10,10 @@ const SCAN_CHANNEL     = process.env.SCAN_CHANNEL;
 const IP_CHANNEL       = process.env.IP_CHANNEL;
 const PROXMOX_CHANNEL  = process.env.PROXMOX_CHANNEL;
 const ALERT_CHANNEL    = process.env.ALERT_CHANNEL || PROXMOX_CHANNEL; // alertas do homelab
+const MEDIA_CHANNEL    = process.env.MEDIA_CHANNEL;                     // avisos de mídia (ver media.js)
+
+// Apelidos aceitos no /notify: quem chama não precisa saber IDs de canal do Discord
+const NOTIFY_CHANNELS  = new Map([["alert", ALERT_CHANNEL], ["media", MEDIA_CHANNEL]]);
 
 /* ─── Config (.env) ─────────────────────────────────────────────── */
 const TOKEN      = process.env.DISCORD_TOKEN;
@@ -57,7 +61,9 @@ function sourceStatus(ok) {
      GET  /health  → "OK" (healthcheck)
      POST /notify  → posta uma mensagem no Discord (usado pelo n8n)
                      header X-Notify-Key: <NOTIFY_KEY do .env>
-                     body   { "content": "...", "embeds": [...], "channelId": "opcional" }
+                     body   { "content": "...", "embeds": [...],
+                              "channelId": "opcional" | "channel": "alert" | "media",
+                              "mentionUsers": ["IDs de usuário que podem ser pingados"] }
    ═══════════════════════════════════════════════════════════════════ */
 function sendJson(res, status, obj) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -107,8 +113,12 @@ async function handleNotify(req, res) {
   }
 
   try {
-    const channel = await client.channels.fetch(body.channelId || ALERT_CHANNEL);
-    const msg = await channel.send({ content, embeds, allowedMentions: { parse: [] } }); // nunca pinga @everyone
+    // Só pinga quem vier em mentionUsers (ex.: quem pediu o filme); @everyone e cargos, nunca
+    const mentionUsers = Array.isArray(body.mentionUsers)
+      ? body.mentionUsers.map(String).filter((id) => /^\d{17,20}$/.test(id)).slice(0, 10)
+      : [];
+    const channel = await client.channels.fetch(body.channelId || NOTIFY_CHANNELS.get(body.channel) || ALERT_CHANNEL);
+    const msg = await channel.send({ content, embeds, allowedMentions: { parse: [], users: mentionUsers } });
     return sendJson(res, 200, { ok: true, id: msg.id });
   } catch (err) {
     console.error("[/notify] Error:", err.message);

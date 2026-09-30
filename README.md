@@ -16,7 +16,7 @@ Os temas são só uma forma de organizar. Por baixo é **um sistema só**: um bo
 flowchart LR
     U["👤 Discord"] --> B["🤖 discord-bot<br/>(Node.js)"]
     B --> N["⚙️ n8n"]
-    N -. "POST /notify (alertas)" .-> B
+    N -. "POST /notify (alertas e avisos)" .-> B
 
     subgraph SEC["🛡️ Segurança"]
         VT["VirusTotal"]
@@ -38,9 +38,10 @@ flowchart LR
     N -->|"!scan / !ip"| SEC
     N -->|"!proxmox"| INF
     B -->|"!filme / !serie / !fila"| MED
+    J -. "webhook: chegou" .-> N
 ```
 
-O bot não tem lógica de análise: ele valida o comando, chama o serviço certo e formata a resposta. Segurança e infraestrutura passam pelos workflows do n8n. A mídia fala direto com o Jellyseerr e o Radarr/Sonarr, porque depende de menus e botões interativos do Discord.
+O bot não tem lógica de análise: ele valida o comando, chama o serviço certo e formata a resposta. Segurança e infraestrutura passam pelos workflows do n8n. A mídia fala direto com o Jellyseerr e o Radarr/Sonarr, porque depende de menus e botões interativos do Discord. O caminho de volta (o aviso de que o pedido chegou) passa pelo n8n.
 
 ---
 
@@ -80,11 +81,13 @@ Pedidos de filmes e séries pro stack de mídia (Jellyseerr, Radarr, Sonarr, qBi
 !serie breaking bad   → escolhe o título no menu → escolhe as temporadas → confirma no botão
 !fila                 → o que está baixando, com % e tempo restante
 !cancelar             → remove o torrent, desmonitora e apaga o pedido
+                      → ✅ @você seu pedido chegou! 🍿  (aviso automático quando fica disponível)
 ```
 
 | Automação | Destaques | Pasta |
 |---|---|---|
-| 🍿 **Pedidos de mídia** | Fluxo interativo (busca → escolha → temporadas → confirmação) que só quem pediu pode usar. O cancelamento vai de ponta a ponta, pra o Radarr/Sonarr não baixar de novo. | [`discord-bot`](discord-bot#pedidos-de-mídia-mediajs) (`media.js`) |
+| 🍿 **Pedidos de mídia** | Fluxo interativo (busca → escolha → temporadas → confirmação) que só quem pediu pode usar. Pede só as temporadas que faltam e cancela de ponta a ponta, pra o Radarr/Sonarr não baixar de novo. | [`discord-bot`](discord-bot#pedidos-de-mídia-mediajs) (`media.js`) |
+| 📬 **Aviso de "chegou"** | Quando o título fica disponível, o Jellyseerr avisa o n8n, que posta no Discord com pôster e marca quem pediu. | [`n8n-workflows/media-notifications`](n8n-workflows/media-notifications) |
 
 ---
 
@@ -101,7 +104,8 @@ Pedidos de filmes e séries pro stack de mídia (Jellyseerr, Radarr, Sonarr, qBi
 └── n8n-workflows/
     ├── url-reputation-scanner/   # 🛡️
     ├── ip-intelligence/          # 🛡️
-    └── proxmox-dashboard/        # 🖥️
+    ├── proxmox-dashboard/        # 🖥️
+    └── media-notifications/      # 🎬
 ```
 
 Cada pasta de workflow tem o `workflow.json` pra importar no n8n e um README com o fluxo, o formato da resposta e as credenciais necessárias.
