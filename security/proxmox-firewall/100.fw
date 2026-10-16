@@ -1,0 +1,9 @@
+[OPTIONS]
+enable: 1
+policy_in: ACCEPT
+policy_out: ACCEPT
+
+[RULES]
+OUT ACCEPT -dest 192.168.50.15 -p tcp -dport 8006 # Homepage: API do Proxmox (token PVEAuditor)
+OUT ACCEPT -dest 192.168.50.15 -p tcp -dport 61208 # Homepage: Glances do host
+OUT REJECT -dest 192.168.50.15 -log info # Revisao de 16/10: nada deste CT chega ao host, mesmo se o root do CT trocar o proprio IP

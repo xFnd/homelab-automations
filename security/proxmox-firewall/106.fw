@@ -1,0 +1,8 @@
+[OPTIONS]
+enable: 1
+policy_in: ACCEPT
+policy_out: ACCEPT
+
+[RULES]
+OUT ACCEPT -dest 192.168.50.15 -p tcp -dport 8006 # n8n: API do Proxmox (token n8n@pve, papel minimo)
+OUT REJECT -dest 192.168.50.15 -log info # Revisao de 16/10: nada deste CT chega ao host, mesmo se o root do CT trocar o proprio IP

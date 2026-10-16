@@ -8,10 +8,13 @@ Tarefa 2 de 16/10/2026, HOMELAB §15.12.
 
 Regras fixas AQUI (quem chama não escolhe nada além da lista de IPs):
   - prazo de 48h e motivo "fnd/isca-vps2-login" (aparece em `cscli decisions list`);
-  - só IP público (nada de rede privada, reservada ou documentação) e no máximo 1000 por chamada;
-  - nunca bloqueia o que está em qualquer allowlist do CrowdSec (casa, anthropic-mcp, infra) nem as próprias VPS;
+  - só IP público (nada de rede privada, reservada, documentação ou com zona; IPv4 mapeado vira IPv4);
+  - nunca bloqueia o que está em qualquer allowlist do CrowdSec (casa, anthropic-mcp, infra), as próprias VPS nem
+    as dependências críticas da VPS1 (Cloudflare, por onde passam Discord e Let's Encrypt, e os DNS públicos);
   - não duplica: IP que já tem decisão preventiva ativa fica de fora;
-  - teto de 5000 decisões preventivas ativas; entrada acima de 64 KiB é recusada inteira;
+  - TETOS COM RECUSA TOTAL (revisão de 16/10: a isca é não confiável por definição): mais de 400 IPs numa chamada
+    ou mais de 1500 decisões preventivas ativas → não importa NADA e devolve erro (o CT106 avisa no Discord);
+  - entrada acima de 64 KiB é recusada inteira; uma execução por vez (trava em /run);
   - interruptor: se /etc/crowdsec-block/disabled existir, não importa nada.
 Remover tudo: cscli decisions delete --scenario fnd/isca-vps2-login
 """
@@ -20,12 +23,24 @@ import datetime as dt, ipaddress, json, os, re, subprocess, sys, tempfile
 REASON = "fnd/isca-vps2-login"
 DURATION = "48h"
 MAX_INPUT = 64 * 1024
-MAX_PER_CALL = 1000
-MAX_ACTIVE = 5000
+MAX_PER_CALL = 400   # normal: ~110–200 IPs na lista de 24h da isca
+MAX_ACTIVE = 1500    # normal: ~250 ativos (48h)
 KILL_SWITCH = "/etc/crowdsec-block/disabled"
 STATE = "/var/lib/crowdsec-block/last.json"
-# Defesa extra, além da allowlist "infra" do CrowdSec: as próprias VPS nunca entram (VPS1 gateway, VPS2 isca)
-NEVER = [ipaddress.ip_network("203.0.113.10/32"), ipaddress.ip_network("203.0.113.20/32")]
+LOCK = "/run/crowdsec-block.lock"
+# Defesa extra, além das allowlists do CrowdSec. Uma isca comprometida não pode derrubar o que a VPS1 precisa:
+# o bouncer descarta TUDO que vem do IP banido, inclusive as respostas de conexões que a própria VPS1 abre.
+NEVER = [ipaddress.ip_network(n) for n in (
+    "203.0.113.10/32", "203.0.113.20/32",                          # VPS1 gateway, VPS2 isca
+    # Cloudflare (cloudflare.com/ips, 16/10/2026): Discord (webhooks/bot) e API do Let's Encrypt passam por ela
+    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22", "141.101.64.0/18", "108.162.192.0/18",
+    "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+    "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+    "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32", "2405:8100::/32", "2a06:98c0::/29",
+    "2c0f:f248::/32",
+    # DNS públicos (Gatus e diagnósticos)
+    "1.1.1.0/24", "1.0.0.0/24", "8.8.8.0/24", "8.8.4.0/24", "2001:4860:4860::/48",
+)]
 
 
 def parse_candidates(text, cap=MAX_PER_CALL):
@@ -42,6 +57,10 @@ def parse_candidates(text, cap=MAX_PER_CALL):
         except ValueError:
             r["invalid"] += 1
             continue
+        if getattr(ip, "scope_id", None):  # "fe80::1%eth0"/"2606:…%a": zona não é IP de atacante (e quebraria o cscli)
+            r["invalid"] += 1
+            continue
+        ip = getattr(ip, "ipv4_mapped", None) or ip  # ::ffff:a.b.c.d → a.b.c.d (senão escaparia das allowlists IPv4)
         if not ip.is_global or ip.is_multicast:
             r["not_global"] += 1
             continue
@@ -97,8 +116,14 @@ def allowlist_values(data, now):
 
 
 def active_values(alerts):
-    """IPs com decisão preventiva ativa (`cscli decisions list --scenario REASON -o json` devolve alertas)."""
-    return {d.get("value") for a in alerts or [] for d in (a.get("decisions") or []) if d.get("scenario") == REASON}
+    """IPs com decisão preventiva ativa (`cscli decisions list --scenario REASON -o json` devolve alertas).
+    Decisão apagada/expirada vem com duração "0s" (logo depois do delete) ou negativa ("-3m12s") e não conta
+    (revisão de 16/10; conferido na VPS1)."""
+    def alive(d):
+        dur = str(d.get("duration", ""))
+        return not dur.startswith("-") and dur not in ("0s", "")
+    return {d.get("value") for a in alerts or [] for d in (a.get("decisions") or [])
+            if d.get("scenario") == REASON and alive(d)}
 
 
 def plan(ips, active, max_active=MAX_ACTIVE):
@@ -120,6 +145,9 @@ def handle_import(raw, deps):
     if len(raw) > MAX_INPUT:
         return {**base, "error": f"entrada grande demais (> {MAX_INPUT} bytes): nada importado"}
     c = parse_candidates(raw.decode("utf-8", "replace"))
+    if c["over_cap"]:
+        return {**base, "error": f"acima do teto de {MAX_PER_CALL} IPs por chamada "
+                                 f"({len(c['valid']) + c['over_cap']} válidos): nada importado (possível abuso da isca)"}
     nets = networks(allowlist_values(deps.allowlists(), dt.datetime.now(dt.timezone.utc))) + NEVER
     keep, protected = split_protected(c["valid"], nets)
     active = active_values(deps.active())
@@ -127,6 +155,8 @@ def handle_import(raw, deps):
     r = {**base, **{k: c[k] for k in ("received", "invalid", "not_global", "duplicates", "over_cap")},
          "valid": len(c["valid"]), "protected": protected, "already_active": p["already_active"],
          "over_max_active": p["over_max_active"], "imported": 0, "active_after": len(active)}
+    if p["over_max_active"]:
+        return {**r, "error": f"o teto de {MAX_ACTIVE} bloqueios ativos seria passado: nada importado (possível abuso da isca)"}
     if p["to_import"]:
         n = imported_count(deps.do_import(p["to_import"]))
         if n is None:
@@ -174,12 +204,26 @@ def log(msg):
     subprocess.run(["logger", "-t", "crowdsec-block", "-p", "auth.info", msg], check=False)
 
 
+def acquire_lock(path=LOCK):
+    """Uma execução por vez (chamadas simultâneas leriam o mesmo "active" e passariam do teto). None = ocupado."""
+    import fcntl  # só existe no Linux
+    f = open(path, "w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return f
+    except OSError:
+        f.close()
+        return None
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) == 2 else ""
     cs = CrowdSec()
     if mode == "import":
+        lock = acquire_lock()
         try:
-            r = handle_import(sys.stdin.buffer.read(MAX_INPUT + 1), cs)
+            r = handle_import(sys.stdin.buffer.read(MAX_INPUT + 1), cs) if lock else \
+                {"ok": False, "reason": REASON, "error": "outra execução em andamento: nada importado"}
         except Exception as e:  # nada de traceback para quem chama
             r = {"ok": False, "reason": REASON, "error": f"{type(e).__name__}"}
         r["at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

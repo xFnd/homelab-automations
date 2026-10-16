@@ -45,14 +45,17 @@ fields.push({ name: '🚪 Porta 2333 (rathole)', value: `${fmtN(rh.probes)} cone
   (rh.distinct_ips ? ` · ${fmtN(rh.distinct_ips)} IPs identificados` : ''), inline: true });
 // S51 (16/10): o coletor lê os números do nftables e já entrega a janela de 24h (dropped_packets_24h)
 const b = d.bouncer || {}, ba = b.active || {}, d24 = b.dropped_packets_24h || {};
+const bOk = b.ok !== false && b.source === 'nft'; // revisão de 16/10: sem dados, mostrar "indisponível", nunca 0
 const jan = (b.window_h === null || b.window_h === undefined) ? 'desde o reinício do bouncer' : `${b.window_h}h`;
-fields.push({ name: '🧱 Bloqueio (nftables)', value:
-  `comunidade (CAPI): ${fmtN(ba.CAPI)} IPs · bans locais ativos: ${fmtN(ba.crowdsec)}\n` +
-  `pacotes barrados (${jan}): CAPI ${fmtN(d24.CAPI)} · locais ${fmtN(d24.crowdsec)} · isca ${fmtN(d24['cscli-import'])}` });
+fields.push({ name: '🧱 Bloqueio (nftables)', value: bOk
+  ? `comunidade (CAPI): ${fmtN(ba.CAPI)} IPs · bans locais ativos: ${fmtN(ba.crowdsec)}\n` +
+    `pacotes barrados (${jan}): CAPI ${fmtN(d24.CAPI)} · locais ${fmtN(d24.crowdsec)} · isca ${fmtN(d24['cscli-import'])}`
+  : `indisponível (o coletor não leu o nftables: ${code(b.error || 'sem dados', 40)}; ver \`journalctl -u crowdsec-relay-collector\`)` });
 const pv = d.preventive;
-if (pv) fields.push({ name: '🍯→🧱 Bloqueio preventivo (isca)', value:
-  `${fmtN(pv.active)} IPs bloqueados por 48h · ${fmtN(pv.imported_24h)} novos em 24h` +
-  (pv.disabled ? ' · ⏸️ desligado' : '') + (pv.last_run && pv.last_run.ok === false ? ' · ⚠️ última execução falhou' : ''), inline: true });
+if (pv) fields.push({ name: '🍯→🧱 Bloqueio preventivo (isca)', inline: true, value: pv.ok === false
+  ? `indisponível (${code(pv.error || 'erro', 40)})`
+  : `${pv.active === null || pv.active === undefined ? '?' : fmtN(pv.active)} IPs bloqueados por 48h · ${fmtN(pv.imported_24h)} novos em 24h` +
+    (pv.disabled ? ' · ⏸️ desligado' : '') + (pv.last_run && pv.last_run.ok === false ? ' · ⚠️ última execução falhou' : '') });
 const sim = A.simulated_list || [];
 fields.push({ name: '🧪 Simulação http-dos (não bane)', value: sim.length ? lines(sim.map(x => `${code(short(x.scenario), 40)} ${code(x.ip, 40)} ×${x.count}`)) : 'nada teria sido banido ✅' });
 const n = d.net || {};
