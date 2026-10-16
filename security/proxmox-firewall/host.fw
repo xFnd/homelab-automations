@@ -1,0 +1,12 @@
+[OPTIONS]
+enable: 1
+
+[RULES]
+# Tarefa 4 (16/10/2026), HOMELAB §15.12.3. A ordem importa: estas regras vêm ANTES das liberações automáticas do PVE
+# (GUI 8006, SSH 22, SPICE 3128 e VNC 5900-5999 para a rede local inteira, que inclui os CTs).
+IN ACCEPT -source 192.168.50.25 -p tcp -dport 8006 # CT100 Homepage: widgets da API (token PVEAuditor)
+IN ACCEPT -source 192.168.50.31 -p tcp -dport 8006 # CT106 n8n: status e energia das VMs (token proxmox-n8n)
+IN ACCEPT -source 192.168.50.25 -p tcp -dport 61208 # CT100 Homepage: Glances do host
+IN DROP -source +guests -log info # qualquer outro acesso de CT/VM/roteador ao host (inclui SSH 22 e 8006)
+IN ACCEPT -source +admin -p tcp -dport 61208 # PC/celular: Glances web do host
+IN ACCEPT -source +admin -p icmp # ping a partir dos aparelhos de casa

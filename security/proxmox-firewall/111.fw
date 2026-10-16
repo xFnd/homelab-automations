@@ -1,0 +1,12 @@
+[OPTIONS]
+enable: 1
+policy_in: ACCEPT
+policy_out: ACCEPT
+
+[RULES]
+OUT REJECT -dest +guests -log info # Tarefa 4 (HOMELAB 15.12.3): host, outros CTs, VM 104 e roteador: o Immich nao inicia nada para eles
+OUT REJECT -dest +admin -p tcp -dport 22,135,139,445,3389,5985,5986 -log info # aparelhos de casa: SSH/SMB/RDP/WinRM
+OUT REJECT -dest fe80::/10 -p tcp -log info # IPv6 link-local da LAN
+OUT REJECT -dest fe80::/10 -p udp -log info
+OUT REJECT -dest 2001:db8:50:0::/64 -p tcp -log info # IPv6 global da LAN (prefixo delegado pela NET; revisar se mudar)
+OUT REJECT -dest 2001:db8:50:0::/64 -p udp -log info

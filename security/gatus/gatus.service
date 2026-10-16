@@ -1,0 +1,44 @@
+[Unit]
+Description=Gatus (tarefa 6): teste de fora para dentro dos sites, alerta no Discord, UI so em 127.0.0.1:8088 (HOMELAB 15.12.5)
+After=network-online.target caddy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gatus
+Group=gatus
+Environment=GATUS_CONFIG_PATH=/etc/gatus/config.yaml
+Environment=GATUS_LOG_LEVEL=INFO
+EnvironmentFile=/etc/gatus/secrets.env
+ExecStart=/usr/local/bin/gatus
+WorkingDirectory=/var/lib/gatus
+Restart=on-failure
+RestartSec=15
+MemoryHigh=96M
+MemoryMax=128M
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gatus
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

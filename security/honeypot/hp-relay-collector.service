@@ -1,0 +1,19 @@
+[Unit]
+Description=hp-relay: resume o log do Cowrie (so leitura) para o n8n de casa (D4, HOMELAB 7)
+After=cowrie.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/hp-relay/hp-collect.py
+Restart=always
+RestartSec=60
+Nice=10
+MemoryMax=192M
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hp-relay
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

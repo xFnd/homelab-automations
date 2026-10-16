@@ -1,0 +1,42 @@
+[Unit]
+Description=Cowrie SSH honeypot (shell emulado; D3, HOMELAB 7)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=cowrie
+Group=cowrie
+WorkingDirectory=/opt/cowrie/hp
+ExecStart=/opt/cowrie/hp/cowrie-env/bin/twistd --umask 0077 --nodaemon --pidfile= -l - cowrie
+Restart=always
+RestartSec=10
+SyslogIdentifier=cowrie
+# Saída de rede do usuário cowrie é bloqueada no iptables (OUTPUT --uid-owner cowrie, NEW → DROP)
+# Sandbox: o processo só escreve em var/ e não ganha privilégio nenhum
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/opt/cowrie/hp/var
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+MemoryMax=300M
+TasksMax=64
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

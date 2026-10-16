@@ -1,0 +1,11 @@
+---
+name: ssh_time_based_ban
+# A4.2 (2026-10-14): os cenários ssh-time-based-bf* vêm com remediation=false (só alertam).
+# Aqui eles viram ban de 4h. Seguro porque só o dono usa SSH (por chave) e o IP de casa
+# está na allowlist "casa" (A4.1). Ver HOMELAB §6.5 / §15.7.
+filters:
+ - Alert.GetScope() == "Ip" && Alert.GetScenario() startsWith "crowdsecurity/ssh-time-based-bf"
+decisions:
+ - type: ban
+   duration: 4h
+on_success: break

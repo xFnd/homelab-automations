@@ -1,0 +1,213 @@
+#!/usr/bin/python3 -I
+"""crowdsec-block-apply (VPS1, root via sudo): bloqueio preventivo dos IPs que tentaram login na isca (VPS2).
+
+Chamado SÓ pelo comando forçado /usr/local/bin/crowdsec-block (chave do CT 106), com um destes argumentos:
+  import  → lê do stdin um IP por linha e cria decisões locais do CrowdSec (cscli decisions import)
+  status  → resumo (decisões preventivas ativas, se está desligado, última importação)
+Tarefa 2 de 16/10/2026, HOMELAB §15.12.
+
+Regras fixas AQUI (quem chama não escolhe nada além da lista de IPs):
+  - prazo de 48h e motivo "fnd/isca-vps2-login" (aparece em `cscli decisions list`);
+  - só IP público (nada de rede privada, reservada ou documentação) e no máximo 1000 por chamada;
+  - nunca bloqueia o que está em qualquer allowlist do CrowdSec (casa, anthropic-mcp, infra) nem as próprias VPS;
+  - não duplica: IP que já tem decisão preventiva ativa fica de fora;
+  - teto de 5000 decisões preventivas ativas; entrada acima de 64 KiB é recusada inteira;
+  - interruptor: se /etc/crowdsec-block/disabled existir, não importa nada.
+Remover tudo: cscli decisions delete --scenario fnd/isca-vps2-login
+"""
+import datetime as dt, ipaddress, json, os, re, subprocess, sys, tempfile
+
+REASON = "fnd/isca-vps2-login"
+DURATION = "48h"
+MAX_INPUT = 64 * 1024
+MAX_PER_CALL = 1000
+MAX_ACTIVE = 5000
+KILL_SWITCH = "/etc/crowdsec-block/disabled"
+STATE = "/var/lib/crowdsec-block/last.json"
+# Defesa extra, além da allowlist "infra" do CrowdSec: as próprias VPS nunca entram (VPS1 gateway, VPS2 isca)
+NEVER = [ipaddress.ip_network("203.0.113.10/32"), ipaddress.ip_network("203.0.113.20/32")]
+
+
+def parse_candidates(text, cap=MAX_PER_CALL):
+    """Uma linha = um IP. Devolve os válidos (públicos, canônicos, sem repetição, até `cap`) e as contagens do resto."""
+    r = {"received": 0, "valid": [], "invalid": 0, "not_global": 0, "duplicates": 0, "over_cap": 0}
+    seen = set()
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        r["received"] += 1
+        try:
+            ip = ipaddress.ip_address(s)
+        except ValueError:
+            r["invalid"] += 1
+            continue
+        if not ip.is_global or ip.is_multicast:
+            r["not_global"] += 1
+            continue
+        v = ip.compressed
+        if v in seen:
+            r["duplicates"] += 1
+            continue
+        seen.add(v)
+        if len(r["valid"]) >= cap:
+            r["over_cap"] += 1
+            continue
+        r["valid"].append(v)
+    return r
+
+
+def networks(values):
+    nets = []
+    for v in values:
+        try:
+            nets.append(ipaddress.ip_network(str(v).strip(), strict=False))
+        except ValueError:
+            pass
+    return nets
+
+
+def split_protected(ips, nets):
+    """(IPs liberados para bloqueio, quantos estavam protegidos por allowlist ou pela lista NEVER)."""
+    keep, protected = [], 0
+    for v in ips:
+        a = ipaddress.ip_address(v)
+        if any(a.version == n.version and a in n for n in nets):
+            protected += 1
+        else:
+            keep.append(v)
+    return keep, protected
+
+
+def allowlist_values(data, now):
+    """Valores de todas as allowlists (`cscli allowlists list -o json`), sem os itens já expirados."""
+    vals = []
+    for al in data or []:
+        for it in al.get("items") or []:
+            exp = str(it.get("expiration") or "")
+            if exp and not exp.startswith("0001-"):
+                try:
+                    if dt.datetime.fromisoformat(exp.replace("Z", "+00:00")) <= now:
+                        continue
+                except ValueError:
+                    pass  # expiração ilegível: trata como ativa (protege mais, nunca menos)
+            if it.get("value"):
+                vals.append(it["value"])
+    return vals
+
+
+def active_values(alerts):
+    """IPs com decisão preventiva ativa (`cscli decisions list --scenario REASON -o json` devolve alertas)."""
+    return {d.get("value") for a in alerts or [] for d in (a.get("decisions") or []) if d.get("scenario") == REASON}
+
+
+def plan(ips, active, max_active=MAX_ACTIVE):
+    room = max(0, max_active - len(active))
+    new = [v for v in ips if v not in active]
+    return {"to_import": new[:room], "already_active": len(ips) - len(new), "over_max_active": max(0, len(new) - room)}
+
+
+def imported_count(output):
+    m = re.search(r"Imported (\d+) decisions", output or "")
+    return int(m.group(1)) if m else None
+
+
+def handle_import(raw, deps):
+    """Fluxo completo do `import`. `deps` dá acesso ao CrowdSec (ou a um falso, nos testes)."""
+    base = {"ok": False, "reason": REASON, "duration": DURATION, "disabled": False}
+    if deps.disabled():
+        return {**base, "disabled": True, "error": "bloqueio preventivo desligado (interruptor)"}
+    if len(raw) > MAX_INPUT:
+        return {**base, "error": f"entrada grande demais (> {MAX_INPUT} bytes): nada importado"}
+    c = parse_candidates(raw.decode("utf-8", "replace"))
+    nets = networks(allowlist_values(deps.allowlists(), dt.datetime.now(dt.timezone.utc))) + NEVER
+    keep, protected = split_protected(c["valid"], nets)
+    active = active_values(deps.active())
+    p = plan(keep, active)
+    r = {**base, **{k: c[k] for k in ("received", "invalid", "not_global", "duplicates", "over_cap")},
+         "valid": len(c["valid"]), "protected": protected, "already_active": p["already_active"],
+         "over_max_active": p["over_max_active"], "imported": 0, "active_after": len(active)}
+    if p["to_import"]:
+        n = imported_count(deps.do_import(p["to_import"]))
+        if n is None:
+            return {**r, "error": "cscli decisions import falhou"}
+        r["imported"] = n
+        r["active_after"] = len(active) + n
+    r["ok"] = True
+    return r
+
+
+class CrowdSec:
+    """Acesso real: cscli (rodando como root)."""
+    @staticmethod
+    def _json(*args):
+        p = subprocess.run(["cscli", *args, "-o", "json"], capture_output=True, text=True, timeout=120)
+        if p.returncode != 0:
+            raise RuntimeError(f"cscli {' '.join(args)} falhou")
+        out = p.stdout.strip()
+        return json.loads(out) if out and out != "null" else []
+
+    def allowlists(self):
+        return self._json("allowlists", "list")
+
+    def active(self):
+        return self._json("decisions", "list", "--scenario", REASON, "-l", "0")
+
+    @staticmethod
+    def disabled():
+        return os.path.exists(KILL_SWITCH)
+
+    @staticmethod
+    def do_import(ips):
+        with tempfile.NamedTemporaryFile("w", prefix="crowdsec-block.", suffix=".txt", delete=False) as f:
+            f.write("\n".join(ips) + "\n")
+            path = f.name
+        try:
+            p = subprocess.run(["cscli", "decisions", "import", "-i", path, "--format", "values", "-d", DURATION,
+                                "-R", REASON, "-t", "ban", "--scope", "ip"], capture_output=True, text=True, timeout=300)
+            return (p.stdout or "") + (p.stderr or "")
+        finally:
+            os.unlink(path)
+
+
+def log(msg):
+    subprocess.run(["logger", "-t", "crowdsec-block", "-p", "auth.info", msg], check=False)
+
+
+def main():
+    mode = sys.argv[1] if len(sys.argv) == 2 else ""
+    cs = CrowdSec()
+    if mode == "import":
+        try:
+            r = handle_import(sys.stdin.buffer.read(MAX_INPUT + 1), cs)
+        except Exception as e:  # nada de traceback para quem chama
+            r = {"ok": False, "reason": REASON, "error": f"{type(e).__name__}"}
+        r["at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        log("import: " + " ".join(f"{k}={r.get(k)}" for k in ("ok", "received", "imported", "already_active", "protected",
+                                                              "not_global", "invalid", "over_max_active", "active_after", "error")
+                                   if k in r))
+        try:
+            os.makedirs(os.path.dirname(STATE), exist_ok=True)
+            with open(STATE + ".tmp", "w") as f:
+                json.dump(r, f)
+            os.replace(STATE + ".tmp", STATE)
+        except OSError:
+            pass
+    elif mode == "status":
+        try:
+            active = len(active_values(cs.active()))
+        except Exception:
+            active = None
+        try:
+            last = json.load(open(STATE))
+        except (OSError, ValueError):
+            last = None
+        r = {"ok": True, "reason": REASON, "duration": DURATION, "disabled": cs.disabled(), "active": active, "last": last}
+    else:
+        r = {"ok": False, "error": "uso: crowdsec-block-apply import|status"}
+    print(json.dumps(r, ensure_ascii=False))
+    sys.exit(0 if r.get("ok") else 1)
+
+
+if __name__ == "__main__":
+    main()
