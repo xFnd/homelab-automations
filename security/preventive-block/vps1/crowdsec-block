@@ -1,0 +1,16 @@
+#!/bin/sh
+# Comando forçado da chave "crowdsec-block" (authorized_keys do usuário crowdsec-block, VPS1). Tarefa 2, HOMELAB §15.12.
+# Único poder: pedir bloqueio preventivo (48h, motivo fixo) de IPs que tentaram login na isca. Validação, allowlists,
+# prazo e motivo ficam no crowdsec-block-apply (root via sudo, que só aceita estes 2 argumentos).
+# Verbos: import (IPs no stdin, 1 por linha, até 64 KiB) | status | ping. Qualquer outra coisa é recusada e registrada.
+client=${SSH_CLIENT%% *}
+reject() {
+  logger -t crowdsec-block -p auth.warning "comando recusado de $client: $(printf '%s' "$SSH_ORIGINAL_COMMAND" | tr -cd '[:print:]' | cut -c1-200)"
+  echo '{"error":"comando nao permitido"}'; exit 2
+}
+case "$SSH_ORIGINAL_COMMAND" in
+  import) head -c 65537 | sudo -n /usr/local/sbin/crowdsec-block-apply import ;;
+  status) sudo -n /usr/local/sbin/crowdsec-block-apply status </dev/null ;;
+  ping) printf '{"client":"%s","pong":"%s"}\n' "$client" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ;;
+  *) reject ;;
+esac

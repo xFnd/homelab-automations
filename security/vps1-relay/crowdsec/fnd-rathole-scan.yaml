@@ -1,0 +1,17 @@
+# A4.4 (2026-10-14): qualquer conexão na 2333 que não fala o protocolo do rathole é scanner → ban 4h
+# (pelo profile padrão). O cliente legítimo sai do IP de casa, que está na allowlist "casa" (A4.1).
+type: trigger
+name: fnd/rathole-scan
+description: "Scanner hitting the rathole control port (bad hello / protocol mismatch)"
+filter: "evt.Meta.log_type == 'rathole_bad_hello'"
+groupby: evt.Meta.source_ip
+blackhole: 5m
+labels:
+  service: rathole
+  confidence: 3
+  spoofable: 0
+  classification:
+    - attack.T1595
+  behavior: "tcp:scan"
+  label: "Rathole port scan"
+  remediation: true

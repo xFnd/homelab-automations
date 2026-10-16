@@ -1,0 +1,4 @@
+# /etc/sudoers.d/crowdsec-block (440) — tarefa 2, HOMELAB §15.12
+# A chave do CT 106 (usuário crowdsec-block, comando forçado) só pode rodar o aplicador do bloqueio preventivo,
+# e só com um destes dois argumentos. Nenhum outro comando, nenhum outro argumento.
+crowdsec-block ALL=(root) NOPASSWD: /usr/local/sbin/crowdsec-block-apply import, /usr/local/sbin/crowdsec-block-apply status

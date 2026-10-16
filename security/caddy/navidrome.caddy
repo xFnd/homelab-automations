@@ -1,0 +1,31 @@
+# Frente B (preparado em 15/10/2026, DESLIGADO até o dono conferir a senha do admin do Navidrome)
+# Para ligar: copiar para /etc/caddy/sites/navidrome.caddy (ou colar no Caddyfile),
+# validar com `sudo -u caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile` e `systemctl reload caddy`.
+# O túnel é o serviço rathole "navidrome" → 127.0.0.1:10007 → CT102 192.168.50.26:4533 (Noise).
+music.example.org {
+	log {
+		output file /var/log/caddy/navidrome.log
+		format filter {
+			wrap json
+			fields {
+				# API Subsonic (Feishin, apps): credenciais vão na query string → nunca no log
+				request>uri query {
+					delete u
+					delete p
+					delete t
+					delete s
+					delete jwt
+					delete apiKey
+				}
+				# Interface web e API nativa: JWT no header x-nd-authorization (pedido e resposta)
+				request>headers>X-Nd-Authorization delete
+				resp_headers>X-Nd-Authorization delete
+				request>headers>Cookie delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+	reverse_proxy 127.0.0.1:10007 {
+		header_up X-Real-IP {remote_host}
+	}
+}

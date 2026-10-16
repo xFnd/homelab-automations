@@ -1,0 +1,7 @@
+[Unit]
+Description=Cowrie: apaga logs, gravacoes de sessao e arquivos enviados com mais de 30 dias (HOMELAB 7)
+
+[Service]
+Type=oneshot
+User=cowrie
+ExecStart=/usr/bin/find /opt/cowrie/hp/var/log/cowrie /opt/cowrie/hp/var/lib/cowrie/tty /opt/cowrie/hp/var/lib/cowrie/downloads -type f -mtime +30 -delete

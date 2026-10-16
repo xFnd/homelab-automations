@@ -1,0 +1,11 @@
+[Unit]
+Description=hp-block-sync a cada 15 min (HOMELAB 15.12)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+Persistent=false
+
+[Install]
+WantedBy=timers.target

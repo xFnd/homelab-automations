@@ -1,0 +1,21 @@
+[Unit]
+Description=hp-block-sync: IPs que tentaram login na isca (VPS2) -> bloqueio preventivo 48h no CrowdSec da VPS1 (HOMELAB 15.12)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /opt/hp-block-sync/hp-block-sync.py
+Nice=10
+TimeoutStartSec=600
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hp-block-sync
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=128M

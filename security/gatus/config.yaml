@@ -1,0 +1,186 @@
+# Gatus na VPS1 — tarefa 6 (16/10/2026), HOMELAB §15.12.5. Teste de "fora para dentro" pelo caminho real.
+# Interface só em 127.0.0.1:8088. Ver de casa: ssh -L 8088:127.0.0.1:8088 -i ~/.ssh/oracle-media.key ubuntu@203.0.113.10
+# e abrir http://localhost:8088. O webhook do Discord vem de /etc/gatus/secrets.env (600), nunca deste arquivo.
+#
+# Como ler os alertas:
+#   - "🏠 casa (túnel)" testa os serviços DIRETO no túnel (sem DNS e sem Caddy). Os dois caíram juntos = a casa caiu
+#     (energia, internet) ou o túnel (rathole-client do CT106). Um só = aquele serviço.
+#   - "🌐 sites" testa o caminho inteiro (DNS → Caddy → túnel → app) e a validade do certificado (> 21 dias).
+#     Site caiu e o túnel do mesmo serviço está ok = Caddy/DNS/certificado.
+#   - "🔐 DNS" confere se os nomes do DuckDNS ainda apontam para a VPS1.
+
+web:
+  address: 127.0.0.1
+  port: 8088
+
+storage:
+  type: sqlite
+  path: /var/lib/gatus/data.db
+
+ui:
+  title: "Gatus · VPS1 (de fora para dentro)"
+  header: "Homelab FND · VPS1"
+
+alerting:
+  discord:
+    webhook-url: "${GATUS_DISCORD_WEBHOOK}"
+    title: "🛡️ VPS1 · Gatus"
+    default-alert:
+      enabled: true
+      send-on-resolved: true
+      failure-threshold: 4
+      success-threshold: 2
+
+endpoints:
+  # 🏠 casa: direto no túnel rathole (127.0.0.1:1000X), sem DNS e sem Caddy
+  - name: "Túnel → Immich"
+    group: "🏠 casa (túnel)"
+    url: "http://127.0.0.1:10001/api/server/ping"
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: discord
+        failure-threshold: 2
+        description: "O túnel não entrega o Immich (127.0.0.1:10001). Se o 'Túnel → Navidrome' também caiu, é a CASA (energia/internet) ou o rathole-client do CT106; se só este, é o Immich (CT111)."
+
+  - name: "Túnel → Navidrome"
+    group: "🏠 casa (túnel)"
+    url: "http://127.0.0.1:10007/ping"
+    interval: 1m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: discord
+        failure-threshold: 2
+        description: "O túnel não entrega o Navidrome (127.0.0.1:10007). Se o 'Túnel → Immich' também caiu, é a CASA (energia/internet) ou o rathole-client do CT106; se só este, é o Navidrome (CT102)."
+
+  # 🌐 sites: caminho completo pelo nome público + certificado
+  - name: "Immich (fotos)"
+    group: "🌐 sites"
+    url: "https://photos.example.org/api/server/ping"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].res == pong"
+      - "[CERTIFICATE_EXPIRATION] > 504h"
+    alerts:
+      - type: discord
+        description: "Site do Immich fora ou certificado com menos de 21 dias."
+
+  - name: "Jellyfin"
+    group: "🌐 sites"
+    url: "https://jellyfin.example.org/health"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == Healthy"
+      - "[CERTIFICATE_EXPIRATION] > 504h"
+    alerts:
+      - type: discord
+        description: "Site do Jellyfin fora ou certificado com menos de 21 dias."
+
+  - name: "Navidrome"
+    group: "🌐 sites"
+    url: "https://music.example.org/ping"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 504h"
+    alerts:
+      - type: discord
+        description: "Site do Navidrome fora ou certificado com menos de 21 dias."
+
+  - name: "Exterminador de Preços"
+    group: "🌐 sites"
+    url: "https://promo.example.org/healthz"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 504h"
+    alerts:
+      - type: discord
+        description: "Gateway do promo-group fora ou certificado com menos de 21 dias."
+
+  - name: "Brain (MCP)"
+    group: "🌐 sites"
+    url: "https://brain.example.org/authorize/login?request=x"
+    interval: 5m
+    conditions:
+      - "[STATUS] == 400"
+      - "[CERTIFICATE_EXPIRATION] > 504h"
+    alerts:
+      - type: discord
+        description: "O Brain não respondeu pelo túnel (o esperado é 400 da própria aplicação) ou o certificado tem menos de 21 dias."
+
+  - name: "Jellyfin GPU (só certificado)"
+    group: "🌐 sites"
+    url: "https://jellyfin-gpu.example.org/"
+    interval: 5m
+    conditions:
+      - "[STATUS] == any(200, 302, 502)"
+      - "[CERTIFICATE_EXPIRATION] > 504h"
+    alerts:
+      - type: discord
+        description: "Certificado do jellyfin-gpu com menos de 21 dias (a VM 104 desligada dá 502, e isso é normal)."
+
+  # 🔐 DNS: os nomes ainda apontam para a VPS1?
+  - name: "DNS example-photos"
+    group: "🔐 DNS"
+    url: "1.1.1.1"
+    interval: 5m
+    dns:
+      query-name: "photos.example.org"
+      query-type: "A"
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 203.0.113.10"
+    alerts:
+      - type: discord
+        failure-threshold: 3
+        description: "O DuckDNS não devolve o IP da VPS1 para example-photos (queda do DuckDNS ou registro alterado)."
+
+  - name: "DNS example-jellyfin"
+    group: "🔐 DNS"
+    url: "1.1.1.1"
+    interval: 5m
+    dns:
+      query-name: "jellyfin.example.org"
+      query-type: "A"
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 203.0.113.10"
+    alerts:
+      - type: discord
+        failure-threshold: 3
+        description: "O DuckDNS não devolve o IP da VPS1 para example-jellyfin."
+
+  - name: "DNS exterminadordeprecos"
+    group: "🔐 DNS"
+    url: "1.1.1.1"
+    interval: 5m
+    dns:
+      query-name: "promo.example.org"
+      query-type: "A"
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 203.0.113.10"
+    alerts:
+      - type: discord
+        failure-threshold: 3
+        description: "O DuckDNS não devolve o IP da VPS1 para exterminadordeprecos."
+
+  - name: "DNS *.example (guarda-chuva)"
+    group: "🔐 DNS"
+    url: "1.1.1.1"
+    interval: 5m
+    dns:
+      query-name: "music.example.org"
+      query-type: "A"
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 203.0.113.10"
+    alerts:
+      - type: discord
+        failure-threshold: 3
+        description: "O DuckDNS não devolve o IP da VPS1 para o guarda-chuva example (navidrome, brain)."

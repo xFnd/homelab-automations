@@ -1,0 +1,15 @@
+[OPTIONS]
+enable: 1
+policy_in: ACCEPT
+policy_out: ACCEPT
+
+[RULES]
+OUT ACCEPT -dest 192.168.50.31 -p tcp -dport 5678 # Tarefa 4 (HOMELAB 15.12.3): Jellyseerr -> n8n (webhook jellyseerr-events)
+OUT ACCEPT -dest 192.168.50.1 -p udp -dport 5351 # Tailscale: NAT-PMP/PCP no roteador
+OUT ACCEPT -dest 192.168.50.1 -p tcp -dport 5000 # Tailscale: UPnP IGD do roteador (rootDesc.xml)
+OUT REJECT -dest +guests -log info # host, outros CTs, VM 104 e painel do roteador: a midia nao inicia nada para eles
+OUT REJECT -dest +admin -p tcp -dport 22,135,139,445,3389,5985,5986 -log info # aparelhos de casa: SSH/SMB/RDP/WinRM
+OUT REJECT -dest fe80::/10 -p tcp -log info # IPv6 link-local da LAN
+OUT REJECT -dest fe80::/10 -p udp -log info
+OUT REJECT -dest 2001:db8:50:0::/64 -p tcp -log info # IPv6 global da LAN (prefixo delegado pela NET; revisar se mudar)
+OUT REJECT -dest 2001:db8:50:0::/64 -p udp -log info

@@ -1,0 +1,6 @@
+# A4.4 (2026-10-14): log do rathole-server → detecção de varredura na porta 2333 (HOMELAB §6.5)
+source: journalctl
+journalctl_filter:
+  - _SYSTEMD_UNIT=rathole-server.service
+labels:
+  type: syslog

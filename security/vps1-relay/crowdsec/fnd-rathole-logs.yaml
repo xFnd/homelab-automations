@@ -1,0 +1,19 @@
+# A4.4 (2026-10-14): parser próprio do rathole-server. Pega só as conexões na porta 2333 que
+# não falam o protocolo do rathole (scanners). Linha típica (journald, programa "rathole"):
+#   2026-10-14T22:15:59.524663Z ERROR connection{addr=203.0.113.99:26245}: rathole::server: Failed to read hello: early eof
+name: fnd/rathole-logs
+description: "Parse rathole-server bad hello / protocol mismatch (scanners on the tunnel port)"
+filter: "evt.Parsed.program == 'rathole'"
+onsuccess: next_stage
+pattern_syntax:
+  RATHOLE_REASON: 'Failed to (?:read|deserialize) hello|Protocol version mismatched'
+grok:
+  pattern: '%{TIMESTAMP_ISO8601:rathole_time}\s+ERROR\s+connection\{addr=%{IP:source_ip}:%{INT:source_port}\}: rathole::server: %{RATHOLE_REASON:reason}%{GREEDYDATA:details}'
+  apply_on: message
+statics:
+  - meta: service
+    value: rathole
+  - meta: log_type
+    value: rathole_bad_hello
+  - meta: source_ip
+    expression: evt.Parsed.source_ip

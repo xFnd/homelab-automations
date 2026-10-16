@@ -1,0 +1,9 @@
+[Unit]
+Description=sl-sync (D6): regra 22022 da Security List do honeypot segue o IP de casa (HOMELAB 7)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oci-sl-sync/sl-sync.py
+Nice=10

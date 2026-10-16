@@ -1,0 +1,10 @@
+[Unit]
+Description=sl-sync a cada 5 minutos
+
+[Timer]
+OnBootSec=4min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

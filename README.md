@@ -9,6 +9,7 @@ Os temas são só uma forma de organizar. Por baixo é **um sistema só**: um bo
 | 🛡️ | [**Segurança**](#️-segurança) | Triagem de URLs e IPs suspeitos direto do chat | `!scan` `!ip` |
 | 🖥️ | [**Infraestrutura**](#️-infraestrutura) | Status e controle do servidor Proxmox, alertas do homelab | `!proxmox` · `POST /notify` |
 | 🎬 | [**Mídia**](#-mídia) | Pedidos de filmes e séries pro stack *arr + Jellyfin | `!filme` `!serie` `!fila` `!cancelar` `!novidades` |
+| 🧱 | [**Defesa do homelab**](#-defesa-do-homelab-out2026) | Borda com CrowdSec, honeypot, bloqueio preventivo, alertas, monitor externo e firewall do Proxmox | [`security/`](security/) |
 
 ## Arquitetura
 
@@ -89,6 +90,20 @@ Pedidos de filmes e séries pro stack de mídia (Jellyseerr, Radarr, Sonarr, qBi
 | 🍿 **Pedidos de mídia** | Fluxo interativo (busca → escolha → temporadas → confirmação) que só quem pediu pode usar. Pede só as temporadas que faltam e cancela de ponta a ponta, pra o Radarr/Sonarr não baixar de novo. | [`discord-bot`](discord-bot#pedidos-de-mídia-mediajs) (`media.js`) |
 | 📬 **Aviso de "chegou"** | Quando o título fica disponível, o Jellyseerr avisa o n8n, que posta no Discord com pôster e marca quem pediu. | [`n8n-workflows/media-notifications`](n8n-workflows/media-notifications) |
 
+## 🧱 Defesa do homelab (out/2026)
+
+O que protege o próprio homelab, em produção desde outubro de 2026. Detalhes e desenho em [`security/README.md`](security/README.md).
+
+| Peça | Destaques | Pasta |
+|---|---|---|
+| 📡 **Alertas sem abrir a casa** | Casa **puxa** os alertas do CrowdSec da VPS por SSH com chave de comando forçado (só leitura). Aviso de ban com IP Intelligence e texto do atacante sanitizado, saúde (VPS, túnel, certificados, IP de casa) e resumo diário no Discord | [`security/vps1-relay`](security/vps1-relay) · [`security/n8n`](security/n8n) |
+| 🍯 **Honeypot isolado** | Cowrie numa VPS separada, sem rede de saída e sem túnel para casa; relay só leitura e resumo diário | [`security/honeypot`](security/honeypot) |
+| 🚫 **Bloqueio preventivo** | Quem tenta login na isca fica 48h bloqueado no gateway, com allowlist dos próprios hosts, validação e tetos | [`security/preventive-block`](security/preventive-block) |
+| 🩺 **Monitor de fora para dentro** | Gatus na borda separa "a casa caiu" de "um serviço caiu" e avisa certificado perto de vencer, direto no Discord | [`security/gatus`](security/gatus) |
+| 🧱 **Firewall do Proxmox** | Nenhum container alcança o host; os de mídia não alcançam o host, os serviços administrativos nem o roteador | [`security/proxmox-firewall`](security/proxmox-firewall) |
+
+> O bot de produção migrou para **comandos de barra** em 16/10/2026. A pasta [`discord-bot`](discord-bot) continua com a versão `!` (o código novo inclui a integração com um projeto privado).
+
 ---
 
 ## Estrutura
@@ -101,11 +116,12 @@ Pedidos de filmes e séries pro stack de mídia (Jellyseerr, Radarr, Sonarr, qBi
 │   ├── package.json
 │   ├── package-lock.json
 │   └── .env.example
-└── n8n-workflows/
-    ├── url-reputation-scanner/   # 🛡️
-    ├── ip-intelligence/          # 🛡️
-    ├── proxmox-dashboard/        # 🖥️
-    └── media-notifications/      # 🎬
+├── n8n-workflows/
+│   ├── url-reputation-scanner/   # 🛡️
+│   ├── ip-intelligence/          # 🛡️
+│   ├── proxmox-dashboard/        # 🖥️
+│   └── media-notifications/      # 🎬
+└── security/                     # 🧱 defesa do homelab (out/2026): relays, honeypot, bloqueio, Gatus, firewall, testes
 ```
 
 Cada pasta de workflow tem o `workflow.json` pra importar no n8n e um README com o fluxo, o formato da resposta e as credenciais necessárias.

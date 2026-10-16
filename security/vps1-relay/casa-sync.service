@@ -1,0 +1,14 @@
+[Unit]
+Description=casa-sync (A5): allowlist "casa" do CrowdSec segue o IP de casa (HOMELAB 15.7)
+After=crowdsec.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/crowdsec-relay/casa-sync.py
+Nice=10
+ProtectSystem=strict
+# B2 (16/10): "cscli allowlists add/remove" grava direto no SQLite do CrowdSec; sem isto, read-only file system
+ReadWritePaths=/var/lib/crowdsec-relay /var/lib/crowdsec/data
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes

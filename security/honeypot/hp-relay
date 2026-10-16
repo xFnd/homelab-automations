@@ -1,0 +1,21 @@
+#!/bin/sh
+# Comando forçado da chave do n8n (authorized_keys do usuário hp-relay, VPS2). Só leitura.
+# Verbos: stats | blocklist | ping. Resposta: {"client":"<IP de origem>","data":<json>}. Ver HOMELAB §7 (D4).
+# blocklist (16/10, tarefa 2): IPs que tentaram login na isca em 24h, lidos pelo hp-block-sync do CT 106 (§15.12).
+D=/var/lib/hp-relay
+client=${SSH_CLIENT%% *}
+# Todo comando recusado vai para o journal (auditoria: journalctl -t hp-relay)
+reject() {
+  logger -t hp-relay -p auth.warning "comando recusado de $client: $(printf '%s' "$SSH_ORIGINAL_COMMAND" | tr -cd '[:print:]' | cut -c1-200)"
+  echo '{"error":"comando nao permitido"}'; exit 2
+}
+cmd=$SSH_ORIGINAL_COMMAND
+# O nó SSH do n8n (node-ssh) manda "cd / ; <verbo>": aceita só esse prefixo exato
+case "$cmd" in "cd / ; "*) cmd=${cmd#"cd / ; "} ;; esac
+case "$cmd" in
+  stats|blocklist) f="$D/$cmd.json" ;;
+  ping) printf '{"client":"%s","data":{"pong":"%s"}}\n' "$client" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; exit 0 ;;
+  *) reject ;;
+esac
+[ -r "$f" ] || { echo '{"error":"sem dados ainda"}'; exit 3; }
+printf '{"client":"%s","data":' "$client"; cat "$f"; printf '}\n'

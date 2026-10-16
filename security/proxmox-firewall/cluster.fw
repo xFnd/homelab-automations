@@ -1,0 +1,16 @@
+[OPTIONS]
+enable: 1
+policy_in: DROP
+policy_out: ACCEPT
+
+[IPSET guests] # Tarefa 4 (16/10, HOMELAB 15.12.3): IPs fixos .0-.49 (host, CTs, VM 104, roteador)
+192.168.50.0/27
+192.168.50.32/28
+192.168.50.48/31
+
+[IPSET admin] # aparelhos de casa via DHCP (.50-.255): PC do dono, celulares
+192.168.50.50/31
+192.168.50.52/30
+192.168.50.56/29
+192.168.50.64/26
+192.168.50.128/25
