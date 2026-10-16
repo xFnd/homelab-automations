@@ -100,7 +100,7 @@ O que protege o próprio homelab, em produção desde outubro de 2026. Detalhes 
 | 🍯 **Honeypot isolado** | Cowrie numa VPS separada, sem rede de saída e sem túnel para casa; relay só leitura e resumo diário | [`security/honeypot`](security/honeypot) |
 | 🚫 **Bloqueio preventivo** | Quem tenta login na isca fica 48h bloqueado no gateway, com allowlist dos próprios hosts, validação e tetos | [`security/preventive-block`](security/preventive-block) |
 | 🩺 **Monitor de fora para dentro** | Gatus na borda separa "a casa caiu" de "um serviço caiu" e avisa certificado perto de vencer, direto no Discord | [`security/gatus`](security/gatus) |
-| 🧱 **Firewall do Proxmox** | Nenhum container alcança o host; os de mídia não alcançam o host, os serviços administrativos nem o roteador | [`security/proxmox-firewall`](security/proxmox-firewall) |
+| 🧱 **Firewall do Proxmox** | Os containers não alcançam o host (só os dois que leem a API do Proxmox, e só na porta da API); os de mídia também não alcançam os serviços administrativos nem o roteador | [`security/proxmox-firewall`](security/proxmox-firewall) |
 
 > O bot de produção migrou para **comandos de barra** em 16/10/2026. A pasta [`discord-bot`](discord-bot) continua com a versão `!` (o código novo inclui a integração com um projeto privado).
 

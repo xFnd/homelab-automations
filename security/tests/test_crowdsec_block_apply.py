@@ -34,7 +34,7 @@ class ParseCandidates(unittest.TestCase):
         self.assertEqual(r["duplicates"], 1)
 
     def test_rejects_private_reserved_and_garbage(self):
-        r = apply.parse_candidates("10.0.0.1\n192.168.0.31\n127.0.0.1\n203.0.113.5\nnao-e-ip\n1.2.3.4/24\n; rm -rf /\n", cap=10)
+        r = apply.parse_candidates("10.0.0.1\n192.168.50.31\n127.0.0.1\n203.0.113.5\nnao-e-ip\n1.2.3.4/24\n; rm -rf /\n", cap=10)
         self.assertEqual(r["valid"], [])
         self.assertEqual(r["not_global"], 4)
         self.assertEqual(r["invalid"], 3)
