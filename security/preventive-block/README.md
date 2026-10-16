@@ -28,6 +28,7 @@ VPS1  /usr/local/bin/crowdsec-block → sudo → /usr/local/sbin/crowdsec-block-
 | Quero… | Comando |
 |---|---|
 | Ver os bloqueios preventivos | VPS1: `sudo cscli decisions list --scenario fnd/isca-vps2-login` |
+| Ver se **um** IP está bloqueado | VPS1: `sudo cscli decisions list -i <IP> \| grep <IP>` — o `list -i` também mostra os alertas de import (eles não têm IP de origem), por isso o `grep`. Já o `delete --ip` é exato (filtra a decisão pelo IP; conferido no código do CrowdSec 1.8.1) |
 | Ver a última execução | CT106: `journalctl -u hp-block-sync -n 20` · VPS1: `sudo journalctl -t crowdsec-block -n 20` |
 | Simular (sem enviar) | CT106: `python3 /opt/hp-block-sync/hp-block-sync.py --dry-run` |
 | **Pausar** (lado da VPS1) | `sudo touch /etc/crowdsec-block/disabled` (voltar: `sudo rm /etc/crowdsec-block/disabled`) |

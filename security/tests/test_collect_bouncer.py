@@ -66,9 +66,31 @@ class Drops24h(unittest.TestCase):
         self.assertIsNone(window_h)
         self.assertEqual(len(new), 1)
 
+    def test_reset_is_detected_against_the_latest_sample_not_the_oldest(self):
+        # revisão de 16/10: base 100, última 50000, bouncer reiniciou e o contador voltou para 3000
+        hist = [{"ts": 0, "p": {"CAPI": 100}}, {"ts": 3600, "p": {"CAPI": 50000}}]
+        delta, window_h, new = col.drops_24h(hist, now=7200, current={"CAPI": 3000})
+        self.assertEqual(delta, {"CAPI": 3000})
+        self.assertIsNone(window_h)
+        self.assertEqual(len(new), 1)
+
+    def test_corrupt_history_is_ignored(self):
+        for bad in ({"x": 1}, "lixo", [1, 2], [{"ts": "x", "p": {}}], [{"ts": 1}], None):
+            self.assertEqual(col.clean_history(bad), [], bad)
+        ok = [{"ts": 1.0, "p": {"CAPI": 3}}]
+        self.assertEqual(col.clean_history(ok), ok)
+
     def test_new_origin_counts_from_zero(self):
         delta, _, _ = col.drops_24h([{"ts": 0, "p": {"CAPI": 1}}], now=60, current={"CAPI": 1, "cscli-import": 7})
         self.assertEqual(delta, {"CAPI": 0, "cscli-import": 7})
+
+
+class SafeBlock(unittest.TestCase):
+    def test_a_failing_block_does_not_kill_the_stats(self):
+        def boom():
+            raise TimeoutError("nft travou")
+        self.assertEqual(col.safe_block(boom), {"ok": False, "error": "TimeoutError"})
+        self.assertEqual(col.safe_block(lambda: {"ok": True}), {"ok": True})
 
 
 if __name__ == "__main__":

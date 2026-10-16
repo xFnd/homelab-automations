@@ -14,7 +14,7 @@ Casa (n8n) ──SSH, chave de comando forçado──► relays SÓ LEITURA nas 
           └─► Discord (#seguranca): bans com IP Intelligence, saúde, resumo diário, card no Homepage
 Casa (timer) ── IPs que tentaram login na isca ──► bloqueio preventivo de 48h no CrowdSec do gateway
 Gateway (Gatus) ── testa os sites de fora para dentro ──► Discord direto (avisa mesmo com a casa fora)
-Proxmox ── firewall: nenhum CT alcança o host; CTs de mídia não alcançam o host, os CTs administrativos nem o roteador
+Proxmox ── firewall: CTs não alcançam o host (exceto Homepage e n8n, só na API); os de mídia também não alcançam os CTs administrativos nem o roteador
 ```
 
 Princípios: **toda conexão casa ↔ nuvem é iniciada de casa**; cada chave SSH faz uma coisa só (comando forçado,

@@ -44,6 +44,16 @@ test('card: o JSON público (só LAN) continua sem nenhum IP', () => {
   assert.doesNotMatch(JSON.stringify(body), /\b\d{1,3}(\.\d{1,3}){3}\b/);
 });
 
+test('resumo 08:00: bouncer sem dados mostra "indisponível", não zero (revisão de 16/10)', () => {
+  const sem = { ...VPS1, bouncer: { ok: false, error: 'TimeoutError' }, preventive: { ok: false, error: 'TimeoutError' } };
+  const [{ json: { payload } }] = runCode('n8n/montar-resumo.js', { input: [sshOut(sem)], staticData: {} });
+  const fw = payload.embeds[0].fields.find((f) => f.name.includes('Bloqueio (nftables)'));
+  assert.match(fw.value, /indisponível/);
+  assert.doesNotMatch(fw.value, /CAPI\): 0 IPs/);
+  const prev = payload.embeds[0].fields.find((f) => f.name.includes('preventivo'));
+  assert.match(prev.value, /indisponível/);
+});
+
 test('resumo 08:00: bloco do preventivo e pacotes barrados na janela de 24h', () => {
   const [{ json: { payload } }] = runCode('n8n/montar-resumo.js', { input: [sshOut(VPS1)], staticData: {} });
   const fields = payload.embeds[0].fields;

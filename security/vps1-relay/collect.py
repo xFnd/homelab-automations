@@ -205,11 +205,32 @@ def parse_nft(tables):
     return out
 
 
+def clean_history(raw):
+    """Só as amostras bem formadas do drops-history.json (arquivo corrompido não pode derrubar o coletor)."""
+    if not isinstance(raw, list):
+        return []
+    ok = []
+    for h in raw:
+        if (isinstance(h, dict) and isinstance(h.get("ts"), (int, float)) and isinstance(h.get("p"), dict)
+                and all(isinstance(v, int) for v in h["p"].values())):
+            ok.append(h)
+    return ok
+
+
+def safe_block(fn):
+    """Um bloco do stats.json que falha (timeout do nft/cscli…) vira {"ok": false} sem derrubar os outros."""
+    try:
+        return fn()
+    except Exception as e:
+        print(f"[stats] bloco falhou: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        return {"ok": False, "error": type(e).__name__}
+
+
 def drops_24h(hist, now, current):
     """Pacotes descartados na janela (até 24h) contra a amostra mais antiga ainda dentro dela.
-    Contador menor que antes = bouncer reiniciado: a janela recomeça (window_h None = "desde o reinício")."""
+    Contador menor que o da amostra MAIS RECENTE = bouncer reiniciado: a janela recomeça (window_h None)."""
     keep = [h for h in hist if now - h["ts"] <= DAY_S]
-    if keep and any(v < keep[0]["p"].get(k, 0) for k, v in current.items()):
+    if keep and any(v < keep[-1]["p"].get(k, 0) for k, v in current.items()):
         return dict(current), None, [{"ts": now, "p": dict(current)}]
     keep.append({"ts": now, "p": dict(current)})
     base = keep[0]
@@ -230,7 +251,7 @@ def bouncer_stats():
     out = {"ok": ok, "source": "nft", **parse_nft(tables)}
     try:
         with open(DROPS_HIST) as f:
-            hist = json.load(f)
+            hist = clean_history(json.load(f))
     except (OSError, ValueError):
         hist = []
     out["dropped_packets_24h"], out["window_h"], hist = drops_24h(hist, time.time(), out["dropped_packets"])
@@ -321,8 +342,8 @@ def stats_job():
             "target_users": users.most_common(10), "target_uris": uris.most_common(10),
             "simulated_list": [{"scenario": s, "ip": ip, "count": n} for (s, ip), n in sim.most_common(15)],
         },
-        "preventive": preventive_block(imports),
-        "ssh": ssh_stats(), "rathole": rathole_stats(), "bouncer": bouncer_stats(), "certs": cert_stats(),
+        "preventive": safe_block(lambda: preventive_block(imports)),
+        "ssh": ssh_stats(), "rathole": rathole_stats(), "bouncer": safe_block(bouncer_stats), "certs": cert_stats(),
         "system": system_stats(), "net": net(), "tunnel": tunnel(),
         "allowlist_casa": [i.get("value") for i in ((allow or {}).get("items") or [])] if ok_allow else None,
     })

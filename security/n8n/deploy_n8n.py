@@ -325,7 +325,8 @@ def cmd_code(wf_id, node_name, js_file, channel=""):
     new = (HERE / js_file).read_text()
     if channel:
         new = new.replace("__CHANNEL_ID__", channel)
-    assert "__CHANNEL_ID__" not in new or not channel, "placeholder de canal sobrou"
+    # revisão de 16/10: sem o canal, o aviso iria para o canal padrão do bot (o do Proxmox), com o IP de casa junto
+    assert "__CHANNEL_ID__" not in new, "o código usa __CHANNEL_ID__: passe o ID do canal como 4º argumento"
     old = node["parameters"].get("jsCode", "")
     if old == new:
         print("jsCode já é igual ao arquivo: nada a fazer")

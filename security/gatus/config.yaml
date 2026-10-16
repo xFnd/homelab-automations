@@ -91,7 +91,7 @@ endpoints:
       - type: discord
         description: "Site do Navidrome fora ou certificado com menos de 21 dias."
 
-  - name: "Exterminador de Preços"
+  - name: "Promo"
     group: "🌐 sites"
     url: "https://promo.example.org/healthz"
     interval: 2m
@@ -155,7 +155,7 @@ endpoints:
         failure-threshold: 3
         description: "O DuckDNS não devolve o IP da VPS1 para example-jellyfin."
 
-  - name: "DNS exterminadordeprecos"
+  - name: "DNS promo"
     group: "🔐 DNS"
     url: "1.1.1.1"
     interval: 5m
@@ -168,7 +168,7 @@ endpoints:
     alerts:
       - type: discord
         failure-threshold: 3
-        description: "O DuckDNS não devolve o IP da VPS1 para exterminadordeprecos."
+        description: "O DuckDNS não devolve o IP da VPS1 para promo."
 
   - name: "DNS *.example (guarda-chuva)"
     group: "🔐 DNS"
